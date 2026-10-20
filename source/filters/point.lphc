@@ -1,0 +1,44 @@
+@mode(host.native)
+
+# Filters that map each sample on its own.
+
+from image.image import (Image, clamp, round_div, to_gray);
+
+pub func grayscale(img: Image): Image {
+    return to_gray(img);
+}
+
+func map_samples(img: Image, table: list[int]): Image {
+    var out: list[int] = [];
+    for (v in img.samples) {
+        out.push(table[v]);
+    }
+    return Image(width = img.width, height = img.height, channels = img.channels, samples = out);
+}
+
+# Every filter here is a function of the sample alone, so it is computed
+# once per value into a 256-entry table.
+pub func invert(img: Image): Image {
+    var table: list[int] = [];
+    for (v in 0..256) {
+        table.push(255 - v);
+    }
+    return map_samples(img, table);
+}
+
+pub func brightness(img: Image, delta: int): Image {
+    var table: list[int] = [];
+    for (v in 0..256) {
+        table.push(clamp(v + delta));
+    }
+    return map_samples(img, table);
+}
+
+# 128 + (v - 128) * factor, with the factor in thousandths.
+pub func contrast(img: Image, milli: int): Image {
+    var table: list[int] = [];
+    for (v in 0..256) {
+        table.push(clamp(128 + round_div((v - 128) * milli, 1000)));
+    }
+    return map_samples(img, table);
+}

@@ -1,0 +1,179 @@
+@mode(host.native)
+
+# Netpbm PGM and PPM: P2 and P3 are plain text, P5 and P6 binary. The header
+# is the magic number, width, height and maximum value, separated by
+# whitespace, with `#` comments to the end of a line. A binary raster starts
+# after exactly one whitespace byte.
+
+from image.image import (Image, ImageError);
+
+pub const MAX_SIDE: int = 16384;
+
+func is_space(b: int): bool {
+    return b == 32 or (b >= 9 and b <= 13);
+}
+
+# A cursor over the input bytes. Struct methods cannot mutate, so the
+# reader functions take `edits`.
+struct Cursor {
+    var pos: int;
+}
+
+func skip_space_and_comments(data: bytes, edits cur: Cursor): void {
+    let n = data.len();
+    while (cur.pos < n) {
+        let b = data[cur.pos];
+        if (is_space(b)) {
+            cur.pos = cur.pos + 1;
+        } else if (b == 35) {
+            # `#` comment: skip to the end of the line.
+            while (cur.pos < n and data[cur.pos] != 10 and data[cur.pos] != 13) {
+                cur.pos = cur.pos + 1;
+            }
+        } else {
+            return;
+        }
+    }
+}
+
+# Reads an unsigned decimal number, or throws ImageError naming `what`.
+func read_number(data: bytes, edits cur: Cursor, what: string): int {
+    skip_space_and_comments(data, edits: cur);
+    let n = data.len();
+    if (cur.pos >= n) {
+        throw ImageError(i"unexpected end of file reading the {$ what $}");
+    }
+    var value = 0;
+    var digits = 0;
+    while (cur.pos < n and data[cur.pos] >= 48 and data[cur.pos] <= 57) {
+        if (digits >= 9) {
+            throw ImageError(i"the {$ what $} is too large");
+        }
+        value = value * 10 + (data[cur.pos] - 48);
+        digits += 1;
+        cur.pos = cur.pos + 1;
+    }
+    if (digits == 0) {
+        throw ImageError(i"expected a number for the {$ what $}");
+    }
+    return value;
+}
+
+# Decodes a PGM or PPM image; throws ImageError if it is not one.
+pub func decode_pnm(data: bytes): Image {
+    if (data.len() < 2 or data[0] != 80) {
+        throw ImageError("not a PGM or PPM image (bad magic number)");
+    }
+    let kind = data[1] - 48;
+    if (kind != 2 and kind != 3 and kind != 5 and kind != 6) {
+        throw ImageError(i"unsupported format P{$ str(char.of(data[1])) $} (only P2, P3, P5 and P6)");
+    }
+    let channels = if (kind == 3 or kind == 6) { 3 } else { 1 };
+    var cur = Cursor(pos = 2);
+    let width = read_number(data, edits: cur, "width");
+    let height = read_number(data, edits: cur, "height");
+    let maxval = read_number(data, edits: cur, "maximum value");
+    if (width < 1 or height < 1 or width > MAX_SIDE or height > MAX_SIDE) {
+        throw ImageError(i"unsupported size {$ width $}x{$ height $} (1 to {$ MAX_SIDE $} per side)");
+    }
+    if (maxval < 1) {
+        throw ImageError("the maximum value must be at least 1");
+    }
+    if (maxval > 255) {
+        throw ImageError(i"16-bit samples are not supported (maximum value {$ maxval $})");
+    }
+    let count = width * height * channels;
+    var samples: list[int] = [];
+    if (kind == 5 or kind == 6) {
+        # Exactly one whitespace byte separates the header from the raster.
+        if (cur.pos >= data.len() or !is_space(data[cur.pos])) {
+            throw ImageError("expected whitespace after the maximum value");
+        }
+        let start = cur.pos + 1;
+        let available = data.len() - start;
+        if (available < count) {
+            throw ImageError(i"truncated raster: expected {$ count $} bytes, found {$ available $}");
+        }
+        for (i in start..start + count) {
+            samples.push(data[i]);
+        }
+    } else {
+        for (i in 0..count) {
+            samples.push(read_number(data, edits: cur, "sample"));
+        }
+    }
+    for (i in 0..count) {
+        let v = samples[i];
+        if (v > maxval) {
+            throw ImageError(i"sample {$ v $} is above the maximum value {$ maxval $}");
+        }
+        if (maxval != 255) {
+            samples[i] = (v * 255 + maxval / 2) / maxval;
+        }
+    }
+    return Image(width = width, height = height, channels = channels, samples = samples);
+}
+
+# The format letter of an input file ("2", "3", "5" or "6"), from its magic.
+pub func input_format(data: bytes): string {
+    return if (data.len() >= 2) { str(char.of(data[1])) } else { "" };
+}
+
+# The output format for `img`: `forced` if given, else the input's encoding
+# (plain or binary) with PGM or PPM chosen by the image's channels.
+pub func output_format(img: Image, input: string, forced: string): string {
+    if (forced.len() > 0) {
+        return forced;
+    }
+    let plain = input == "2" or input == "3";
+    if (img.channels == 1) {
+        return if (plain) { "2" } else { "5" };
+    }
+    return if (plain) { "3" } else { "6" };
+}
+
+func push_ascii(edits out: list[int], text: string): void {
+    for (ch in text) {
+        out.push(char.fromString(ch).unwrap().toInt());
+    }
+}
+
+# Encodes `img` as P2, P3, P5 or P6 (`format` is the digit), as a list of
+# byte values: the caller turns it into `bytes` with bytesFromInts when it
+# writes. The image's channels must match the format's (convert first with
+# to_gray / to_rgb).
+pub func encode_pnm(img: Image, format: string): list[int] {
+    var out: list[int] = [];
+    # No escapes inside i"...": the self-hosted `loup run` leaves them
+    # undecoded in interpolated strings (Loup 1.26.0).
+    push_ascii(edits: out, "P" + format + "\n" + str(img.width) + " " + str(img.height) + "\n255\n");
+    if (format == "5" or format == "6") {
+        for (v in img.samples) {
+            out.push(v);
+        }
+        return out;
+    }
+    # Plain text: one image row starts each line, and lines wrap before 70
+    # characters.
+    let per_row = img.width * img.channels;
+    var i = 0;
+    for (y in 0..img.height) {
+        var column = 0;
+        for (k in 0..per_row) {
+            let text = str(img.samples[i]);
+            i += 1;
+            if (column > 0 and column + 1 + text.len() > 70) {
+                out.push(10);
+                column = 0;
+            }
+            if (column > 0) {
+                out.push(32);
+                column += 1;
+            }
+            push_ascii(edits: out, text);
+            column += text.len();
+        }
+        out.push(10);
+    }
+    return out;
+}

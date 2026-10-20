@@ -1,0 +1,61 @@
+@mode(host.native)
+
+# Shared test helpers. Not a test file itself: the tests import it (the
+# Makefile puts tests/ on LOUPPATH).
+
+from debug.assert import (expect);
+from image.image import (Image);
+
+# expectEq on two strings fails in native tests even when they are equal
+# (Loup 1.26.0), so string results are compared with ==.
+pub func expect_text(actual: string, expected: string, context: string): void {
+    expect(actual == expected, i"{$ context $}: expected '{$ expected $}', got '{$ actual $}'");
+}
+
+pub func image(w: int, h: int, channels: int, samples: list[int]): Image {
+    return Image(width = w, height = h, channels = channels, samples = samples);
+}
+
+# "WxHxC: s0 s1 ..." for comparing images (list == is not element-wise).
+pub func describe(img: Image): string {
+    var parts: list[string] = [];
+    for (v in img.samples) {
+        parts.push(str(v));
+    }
+    return i"{$ img.width $}x{$ img.height $}x{$ img.channels $}: " + parts.join(" ");
+}
+
+# The byte values of an ASCII string.
+pub func ascii_ints(text: string): list[int] {
+    var out: list[int] = [];
+    for (ch in text) {
+        out.push(char.fromString(ch).unwrap().toInt());
+    }
+    return out;
+}
+
+# The bytes of an ASCII string. Pass the result straight to a function: in
+# Loup 1.26.0 native code, `.len()` on a let-bound `bytes` returned from a
+# function crashes.
+pub func ascii(text: string): bytes {
+    return bytesFromInts(ascii_ints(text));
+}
+
+# The text of a list of ASCII byte values.
+pub func text_of(values: list[int]): string {
+    var parts: list[string] = [];
+    for (v in values) {
+        parts.push(str(char.of(v)));
+    }
+    return parts.join("");
+}
+
+# The size of a bytes value (see ascii()).
+pub func size_of(data: bytes): int {
+    return data.len();
+}
+
+# One byte of a bytes value (see ascii()).
+pub func byte_at(data: bytes, i: int): int {
+    return data[i];
+}

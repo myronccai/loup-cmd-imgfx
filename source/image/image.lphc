@@ -1,0 +1,60 @@
+@mode(host.native)
+
+# An 8-bit image: `channels` samples per pixel (1 = gray, 3 = RGB), stored
+# row-major with the channels interleaved, every sample 0..255.
+
+pub struct Image {
+    pub width: int;
+    pub height: int;
+    pub channels: int;
+    pub samples: list[int];
+}
+
+pub class ImageError : Exception {}
+
+pub func clamp(v: int): int {
+    return if (v < 0) { 0 } else if (v > 255) { 255 } else { v };
+}
+
+# Rounds a / b to the nearest integer, halves away from zero (b > 0).
+pub func round_div(a: int, b: int): int {
+    return if (a >= 0) { (a + b / 2) / b } else { -((-a + b / 2) / b) };
+}
+
+pub func sample_at(img: Image, x: int, y: int, c: int): int {
+    return img.samples[(y * img.width + x) * img.channels + c];
+}
+
+# Luma of an RGB triple (ITU-R BT.601 weights in 1/256).
+pub func luma(r: int, g: int, b: int): int {
+    return (77 * r + 150 * g + 29 * b + 128) >> 8;
+}
+
+# One channel: luma for RGB, unchanged for gray.
+pub func to_gray(img: Image): Image {
+    if (img.channels == 1) {
+        return img;
+    }
+    var out: list[int] = [];
+    var i = 0;
+    let n = img.width * img.height;
+    for (p in 0..n) {
+        out.push(luma(img.samples[i], img.samples[i + 1], img.samples[i + 2]));
+        i += 3;
+    }
+    return Image(width = img.width, height = img.height, channels = 1, samples = out);
+}
+
+# Three channels: gray copied to R, G and B; RGB unchanged.
+pub func to_rgb(img: Image): Image {
+    if (img.channels == 3) {
+        return img;
+    }
+    var out: list[int] = [];
+    for (v in img.samples) {
+        out.push(v);
+        out.push(v);
+        out.push(v);
+    }
+    return Image(width = img.width, height = img.height, channels = 3, samples = out);
+}

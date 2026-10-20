@@ -1,0 +1,58 @@
+@mode(host.native)
+
+# Read, filter, write. The work is in pure functions (decode_pnm, apply_all,
+# convert, encode_pnm); this module only does the I/O.
+
+from appinfo import (EXIT_OK);
+from cli.args import (Options);
+from image.image import (Image, ImageError, to_gray, to_rgb);
+from image.pnm import (decode_pnm, encode_pnm, input_format, output_format);
+from filters.chain import (apply_all);
+
+# The output bytes for an input file's bytes: decode, filter, convert to
+# the output format, encode.
+pub func process(data: bytes, opts: Options): list[int] {
+    let img = apply_all(decode_pnm(data), opts.filters);
+    let format = output_format(img, input_format(data), opts.format);
+    let ready = if (format == "2" or format == "5") { to_gray(img) } else { to_rgb(img) };
+    return encode_pnm(ready, format);
+}
+
+# The directory part of a path ("." for a bare file name).
+func directory_of(path: string): string {
+    var cut = -1;
+    var i = 0;
+    for (ch in path) {
+        if (ch == "/") {
+            cut = i;
+        }
+        i += 1;
+    }
+    if (cut < 0) {
+        return ".";
+    }
+    return if (cut == 0) { "/" } else { path.slice(0, cut) };
+}
+
+pub func run_imgfx(opts: Options): int {
+    let from_stdin = opts.input == "-";
+    let in_path = if (from_stdin) { "/dev/stdin" } else { opts.input };
+    let name = if (from_stdin) { "standard input" } else { opts.input };
+    # A failed read ends a native program outright in Loup 1.26.0 (try does
+    # not catch it), so check first.
+    if (!from_stdin and !exists(in_path)) {
+        throw ImageError(i"{$ name $}: cannot read: no such file");
+    }
+    let to_stdout = opts.output.len() == 0 or opts.output == "-";
+    if (!to_stdout and !exists(directory_of(opts.output))) {
+        throw ImageError(i"{$ opts.output $}: cannot write: no such directory");
+    }
+    var encoded: list[int] = [];
+    try {
+        encoded = process(readBytes(in_path), opts);
+    } catch (ImageError as e) {
+        throw ImageError(i"{$ name $}: {$ e.message $}");
+    }
+    writeBytes(if (to_stdout) { "/dev/stdout" } else { opts.output }, bytesFromInts(encoded));
+    return EXIT_OK;
+}

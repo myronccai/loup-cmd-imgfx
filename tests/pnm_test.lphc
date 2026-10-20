@@ -1,0 +1,76 @@
+@mode(host.native)
+
+from debug.assert import (expect, expectEq);
+from image.image import (Image, ImageError);
+from image.pnm import (decode_pnm, encode_pnm, output_format, input_format);
+from helpers import (expect_text, image, describe, ascii, ascii_ints, text_of);
+
+func decode_error(text: string): string {
+    try {
+        decode_pnm(ascii(text));
+    } catch (ImageError as e) {
+        return e.message;
+    }
+    return "(decoded)";
+}
+
+func test_binary_gray(): void {
+    let img = decode_pnm(bytesFromInts([80, 53, 10, 50, 32, 49, 10, 50, 53, 53, 10, 7, 200]));
+    expect_text(describe(img), "2x1x1: 7 200", "P5 2x1");
+}
+
+func test_binary_rgb_with_comments(): void {
+    var all = ascii_ints("P6\n# made by hand\n1 # width\n1\n# maximum:\n255\n");
+    all.push(1);
+    all.push(2);
+    all.push(3);
+    expect_text(describe(decode_pnm(bytesFromInts(all))), "1x1x3: 1 2 3", "comments between fields");
+}
+
+func test_plain_formats_and_scaling(): void {
+    expect_text(describe(decode_pnm(ascii("P3 2 1 255  1 2 3\n4 5 6"))), "2x1x3: 1 2 3 4 5 6", "P3");
+    expect_text(describe(decode_pnm(ascii("P2\n3 1\n15\n0 1 15\n"))), "3x1x1: 0 17 255", "maximum value 15 scaled to 255");
+    expect_text(input_format(ascii("P2 1 1 1 0")), "2", "input format digit");
+}
+
+func test_errors(): void {
+    expect_text(decode_error("GIF89a"), "not a PGM or PPM image (bad magic number)", "magic");
+    expect_text(decode_error("P4\n1 1\n"), "unsupported format P4 (only P2, P3, P5 and P6)", "PBM");
+    expect_text(decode_error("P5 2 2 65535 "), "16-bit samples are not supported (maximum value 65535)", "16-bit");
+    expect_text(decode_error("P5 2 2 0 "), "the maximum value must be at least 1", "maxval 0");
+    expect_text(decode_error("P5 0 2 255 "), "unsupported size 0x2 (1 to 16384 per side)", "zero width");
+    expect_text(decode_error("P5 2 2 255 ab"), "truncated raster: expected 4 bytes, found 2", "truncated");
+    expect_text(decode_error("P2 2 1 9 3 10"), "sample 10 is above the maximum value 9", "sample too large");
+    expect_text(decode_error("P2 2 1 9 3"), "unexpected end of file reading the sample", "missing sample");
+    expect_text(decode_error("P5 x 1 255 "), "expected a number for the width", "bad width");
+    expect_text(decode_error("P5 1 1 255"), "expected whitespace after the maximum value", "no raster separator");
+}
+
+func test_encode_binary(): void {
+    let out = encode_pnm(image(2, 1, 3, [1, 2, 3, 4, 5, 6]), "6");
+    expect_text(text_of(out).slice(0, 11), "P6\n2 1\n255\n", "header");
+    expectEq(out.len(), 17, "header plus six samples");
+    expectEq(out[16], 6, "last sample");
+}
+
+func test_encode_plain(): void {
+    let text = text_of(encode_pnm(image(3, 2, 1, [0, 128, 255, 9, 8, 7]), "2"));
+    expect_text(text, "P2\n3 2\n255\n0 128 255\n9 8 7\n", "one row per line");
+    var long: list[int] = [];
+    for (i in 0..60) {
+        long.push(200);
+    }
+    for (line in text_of(encode_pnm(image(20, 1, 3, long), "3")).split("\n")) {
+        expect(line.len() <= 70, i"line of {$ line.len() $} characters");
+    }
+}
+
+func test_output_format(): void {
+    let gray = image(1, 1, 1, [0]);
+    let rgb = image(1, 1, 3, [0, 0, 0]);
+    expect_text(output_format(gray, "6", ""), "5", "binary input, gray result");
+    expect_text(output_format(rgb, "5", ""), "6", "binary input, color result");
+    expect_text(output_format(gray, "3", ""), "2", "plain input, gray result");
+    expect_text(output_format(rgb, "2", ""), "3", "plain input, color result");
+    expect_text(output_format(rgb, "6", "2"), "2", "forced");
+}

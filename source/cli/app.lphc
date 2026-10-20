@@ -1,0 +1,34 @@
+@mode(host.native)
+
+from appinfo import (APP_NAME, EXIT_OK, EXIT_FAILURE, EXIT_USAGE);
+from cli.args import (parse_args);
+from cli.usage import (usage, version_line);
+from commands.imgfx import (run_imgfx);
+
+# Parses argv, runs the filters and returns the exit status.
+pub func run(argv: list[string]): int {
+    let opts = match parse_args(argv) {
+        Ok(parsed) => parsed,
+        Err(msg) => {
+            printErr(i"{$ APP_NAME $}: {$ msg $}");
+            printErr(i"Try '{$ APP_NAME $} --help' for more information.");
+            return EXIT_USAGE;
+        },
+    };
+
+    if (opts.help) {
+        println(usage());
+        return EXIT_OK;
+    }
+    if (opts.version) {
+        println(version_line());
+        return EXIT_OK;
+    }
+
+    try {
+        return run_imgfx(opts);
+    } catch (Exception as e) {
+        printErr(i"{$ APP_NAME $}: {$ e.message $}");
+        return EXIT_FAILURE;
+    }
+}

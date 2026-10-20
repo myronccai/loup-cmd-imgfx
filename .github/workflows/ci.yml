@@ -31,6 +31,6 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: myapp-linux-x86_64
-          path: build/myapp
+          name: imgfx-linux-x86_64
+          path: build/imgfx
           if-no-files-found: error

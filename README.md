@@ -1,83 +1,176 @@
-# template Loup commandline application
+# loup-cmd-imgfx
 
-A GitHub template for a command-line application written in
-[Loup](https://code-craft.ai/references/loup). It includes argument parsing,
-command dispatch, a sample `hello` command, tests, a native build and a CI
-workflow.
+Image filters for Netpbm images (PGM and PPM: P2, P3, P5, P6) in
+[Loup](https://code-craft.ai/references/loup): grayscale, invert, brightness
+and contrast, box and Gaussian blur, Sobel edges, nearest and bilinear
+resize, crop and flip, chained left to right in one command.
 
-After creating a repository from this template, work through
-[REPOSITORY_TODOS.md](REPOSITORY_TODOS.md).
+Part of the **loup-cmd** series of example applications: classic Linux and
+Windows commands, and projects for each Loup execution mode, each in its own
+repository under [myronccai](https://github.com/myronccai?tab=repositories&q=loup-cmd).
+This one is a `host.native` (host-compiled) project.
+
+## What this example shows
+
+- **Why you compile.** Image filters are tight integer loops over every
+  sample, and the same `.lphc` source runs both interpreted and as a native
+  binary. `make bench` runs one filter chain both ways on a 512×512 image:
+
+  ```text
+  $ make bench
+  bash tests/bench.sh build/imgfx "loup-bootstrap run source/main.lphc --" 512 gaussian=2 sobel bilinear=384x384
+  image:   512x512 RGB (random noise)
+  filters: gaussian=2 sobel bilinear=384x384
+  native (build/imgfx)                  0.165 s
+  interpreted (loup-bootstrap run)     29.346 s
+  speed-up: 178x
+  outputs: identical
+  ```
+
+  (On a Ryzen 9 7940HS with other jobs running; the ratio is what matters.
+  The interpreter is Stage0's, for the reason under Limits.)
+
+- **One source, two lanes, identical bytes.** Every filter uses integer
+  arithmetic only (fixed-point bilinear weights, binomial Gaussian weights,
+  an integer square root for Sobel), so the interpreter and LLVM cannot
+  round differently. `make ci` runs the end-to-end tests against the golden
+  files twice: on the binary (`make e2e`) and through the interpreter
+  (`make parity`).
+- **Pure functions.** Decoding, every filter and encoding take values and
+  return values (`Image`, a list of byte values), so the unit tests need no
+  files; the golden outputs were cross-checked against an independent
+  implementation of the same formulas.
+
+`host.native` is what lets a program be shipped as a native binary at all;
+this project uses no `asm` or `unique class` (see loup-cmd-cpuid and
+loup-cmd-kvstore for those): its point is the build.
 
 ## Requirements
 
+- Linux x86-64.
 - Loup 1.26.0 or later:
 
   ```sh
   curl -fsSL https://github.com/code-craft-ai-company/loup-releases/releases/latest/download/loup-install.sh | sh
-  loup --version
   ```
 
-- `make`
-- `clang` 17 or later for native builds. Native builds are supported on Linux
-  x86-64 and arm64, and are a preview on macOS and Windows.
+- `make`, and `clang` 17 or later for the native build.
 
 ## Usage
 
 ```sh
-make run ARGS="--help"            # run from source
-make run ARGS="hello Ann --shout"
-make check                        # type-check the program
-make test                         # run the tests in tests/
-make build                        # native binary: build/myapp
-make ci                           # check, test, build and smoke-test the binary
-make clean
+make build                    # native binary: build/imgfx
+make ci                       # check, native unit tests, build, e2e in both lanes
+make bench                    # interpreted vs native timing (not part of ci)
+make run ARGS="tests/fixtures/rgb.ppm -o out.ppm sobel"   # interpreted run
 ```
 
 ```text
-$ build/myapp --help
-usage: myapp [OPTIONS] COMMAND [ARGS...]
-
-A command-line application written in Loup.
-
-Commands:
-  hello [NAME]          Print a greeting (NAME defaults to 'world')
-  help                  Show this help
-
-Options:
-  -g, --greeting TEXT   Greeting used by 'hello' (default: Hello)
-      --shout           Print the greeting in upper case
-  -v, --verbose         Print diagnostic messages to stderr
-  -h, --help            Show this help and exit
-  -V, --version         Show the version and exit
+$ build/imgfx tests/fixtures/rgb.ppm -o edges.pgm gaussian=2 sobel
+$ build/imgfx tests/fixtures/rgb.ppm -o big.ppm bilinear=160x120 contrast=1.2
+$ build/imgfx tests/fixtures/gray.pgm invert flip=v > flipped.pgm
+$ cat tests/fixtures/rgb.ppm | build/imgfx - grayscale -f P5 > gray.pgm
+$ head -c 13 edges.pgm | od -c | head -1
+0000000   P   5  \n   1   6       1   2  \n   2   5   5  \n
 ```
 
-Exit status: `0` success, `1` runtime failure, `2` usage error.
+Plain-text formats make small results readable:
+
+```text
+$ build/imgfx tests/fixtures/rgb.ppm -f P2 grayscale nearest=8x4
+P2
+8 4
+255
+23 33 44 54 64 74 84 95
+64 74 102 112 123 115 125 135
+105 115 143 153 164 156 166 176
+145 155 165 176 186 196 206 217
+$ build/imgfx tests/fixtures/rgb.ppm crop=20,0,4,4
+imgfx: tests/fixtures/rgb.ppm: crop 20,0,4,4 is outside the 16x12 image
+$ build/imgfx tests/fixtures/rgb.ppm sharpen
+imgfx: unknown filter 'sharpen'
+Try 'imgfx --help' for more information.
+```
+
+## Filters and options
+
+```text
+$ build/imgfx --help
+usage: imgfx [OPTIONS] INPUT [FILTER...]
+
+Apply image filters to PGM and PPM images (P2, P3, P5, P6).
+Filters run left to right. INPUT '-' reads standard input.
+
+Filters:
+  grayscale             one channel: (77 R + 150 G + 29 B + 128) >> 8
+  invert                255 - v
+  brightness=N          add N (-255..255)
+  contrast=F            128 + (v - 128) * F (0..10, e.g. 1.5)
+  blur[=R]              mean of the (2R+1)x(2R+1) window (R 1..25, default 1)
+  gaussian[=R]          binomial blur of width 2R+1 (R 1..8, default 1)
+  sobel                 edge magnitude (grayscale)
+  nearest=WxH           resize, nearest neighbour
+  bilinear=WxH          resize, bilinear
+  crop=X,Y,W,H          cut out a rectangle
+  flip=h, flip=v        mirror left-right or top-bottom
+
+Options:
+  -o, --output FILE     write FILE instead of standard output
+  -f, --format FMT      output format P2, P3, P5 or P6 (default: the
+                        input's plain/binary encoding, gray or color)
+  -h, --help            show this help and exit
+  -V, --version         show the version and exit
+
+Exit status: 0 success, 1 bad input or output, 2 usage error.
+```
+
+- Blurs and Sobel repeat the edge pixels beyond the border. The Gaussian
+  uses the binomial weights of row 2R of Pascal's triangle (1 2 1,
+  1 4 6 4 1, ...), a close approximation of σ = √(R/2).
+- Resizes sample at pixel centres; bilinear uses 8-bit fixed-point weights.
+- Without `-f`, the output keeps the input's encoding (plain text for
+  P2/P3, binary for P5/P6) and is PGM or PPM by the result's channels
+  (`grayscale` and `sobel` give one channel). With `-f`, gray is copied to
+  three channels or color is reduced to luma.
+- Every filter argument is checked before the input is read.
+
+## Limits
+
+- 8-bit samples only: a maximum value above 255 is refused; a lower one is
+  scaled to 0..255, and output always uses 255.
+- No PBM (P1/P4) or PAM (P7), no PNG or JPEG.
+- The whole image is held in memory as a list of ints (up to 16384 pixels
+  per side).
+- Standard output is written by reopening `/dev/stdout`, so `>>` or a group
+  redirection such as `{ echo x; imgfx ...; } > f` truncates the file; use
+  `-o FILE`, a plain `>`, or a pipe.
+- The interpreted lane is Stage0's `loup-bootstrap run`: the self-hosted
+  `loup run` of Loup 1.26.0 on Linux x86-64 silently drops a `writeBytes` of
+  26,210 bytes or more, which almost every image is.
 
 ## Layout
 
 ```text
-package.lppkg            # Loup manifest
-Makefile                 # run, check, test, build, ci, clean
-source/                  # the application's Loup code
-├── main.loup            # entry point
-├── cli/                 # argument parsing, help text, command dispatch
-└── commands/            # one module per command
-tests/                   # *_test.loup files
-specs/                   # feature specs: requirements, design, tasks
-skills/loup-programmer/  # agent skill for writing Loup
+source/main.lphc              # entry point
+source/appinfo.lphc           # name, version, exit statuses
+source/cli/args.lphc          # options, input, filter list
+source/cli/usage.lphc         # --help and --version text
+source/cli/app.lphc           # run(): parse, dispatch, exit status
+source/image/image.lphc       # Image, gray/RGB conversion, rounding helpers
+source/image/pnm.lphc         # PGM/PPM decoding and encoding
+source/filters/spec.lphc      # filter specifications and their limits
+source/filters/point.lphc     # grayscale, invert, brightness, contrast
+source/filters/convolve.lphc  # box blur, Gaussian, Sobel
+source/filters/geometry.lphc  # nearest, bilinear, crop, flip
+source/filters/chain.lphc     # apply the filters in order
+source/commands/imgfx.lphc    # read, filter, write
+tests/*_test.lphc             # native unit tests (make test)
+tests/helpers.lphc            # shared test helpers
+tests/fixtures/               # sample images; expected/ holds the golden outputs
+tests/e2e.sh                  # end-to-end tests (make e2e, make parity)
+tests/bench.sh                # make bench
+specs/imgfx/                  # requirements, design, tasks
 ```
 
-[AGENTS.md](AGENTS.md) has the full layout, every build and test command, and
-the steps for adding a command.
-
-## Notes on the toolchain
-
-- On Linux x86-64, `loup` is the self-hosted driver and `loup-bootstrap` is
-  Stage0. `check` and `test` use `loup-bootstrap`; on other platforms both
-  names run the same tool. The Makefile handles this.
-- Modules import each other by their path under `source/`
-  (`from cli.args import (Options);`). Tests import them the same way, which
-  is why `make test` puts `source/` on `LOUPPATH`.
-- The Wasm build (`loup-bootstrap build`) is experimental: modules that use
-  `i"..."` interpolation build but trap at run time, so this template builds
-  native binaries.
+[AGENTS.md](AGENTS.md) has every build and test command and the conventions
+for changing the code.

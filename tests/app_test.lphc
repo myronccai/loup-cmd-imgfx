@@ -1,0 +1,28 @@
+@mode(host.native)
+
+# Exit statuses through run(). Paths are relative to the test binary's
+# temporary working directory, so the fixtures are written there first.
+
+from debug.assert import (expectEq);
+from appinfo import (EXIT_OK, EXIT_FAILURE, EXIT_USAGE);
+from cli.app import (run);
+from helpers import (ascii, size_of, byte_at);
+
+func test_statuses(): void {
+    writeBytes("tiny.pgm", ascii("P2 2 2 255 0 50 100 150"));
+    expectEq(run(["tiny.pgm", "-o", "out.pgm", "invert", "nearest=4x4"]), EXIT_OK, "filters run");
+    expectEq(run(["--version"]), EXIT_OK, "--version");
+    expectEq(run(["missing.ppm"]), EXIT_FAILURE, "missing input");
+    expectEq(run(["tiny.pgm", "-o", "no/such/dir/out.pgm"]), EXIT_FAILURE, "missing output directory");
+    expectEq(run(["tiny.pgm", "-o", "out.pgm", "crop=1,1,5,5"]), EXIT_FAILURE, "crop outside");
+    expectEq(run(["tiny.pgm", "blur=99"]), EXIT_USAGE, "bad filter argument");
+    expectEq(run(["tiny.pgm", "--format", "P7"]), EXIT_USAGE, "bad format");
+}
+
+func test_output_file(): void {
+    writeBytes("two.pgm", ascii("P2 2 1 255 10 20"));
+    expectEq(run(["two.pgm", "-o", "two.out", "invert"]), EXIT_OK, "written");
+    # "P2\n2 1\n255\n245 235\n"
+    expectEq(size_of(readBytes("two.out")), 19, "P2 header and one row");
+    expectEq(byte_at(readBytes("two.out"), 11), 50, "first digit of 245");
+}

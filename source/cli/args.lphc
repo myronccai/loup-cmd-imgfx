@@ -1,0 +1,111 @@
+@mode(host.native)
+
+# Command-line parsing. Grammar: [OPTIONS] INPUT [FILTER...]
+#   Options may appear anywhere before `--`; everything after `--` is an
+#   operand. Value options accept `--name VALUE` and `--name=VALUE`.
+#   Every filter is parsed here, before the input is read.
+
+from filters.spec import (Filter, parse_filter);
+
+pub struct Options {
+    pub help: bool;
+    pub version: bool;
+    # "" when absent; "-" means standard input / output
+    pub input: string;
+    pub output: string;
+    # "", "2", "3", "5" or "6"
+    pub format: string;
+    pub filters: list[Filter];
+}
+
+# "P6", "p6" or "6" -> "6"; Err for anything else.
+pub func parse_format(text: string): Result[string, string] {
+    let digit = if (text.len() == 2 and (text.startsWith("P") or text.startsWith("p"))) { text.slice(1) } else { text };
+    if (digit == "2" or digit == "3" or digit == "5" or digit == "6") {
+        return Ok(digit);
+    }
+    return Err(i"unknown format '{$ text $}' (P2, P3, P5 or P6)");
+}
+
+pub func parse_args(argv: list[string]): Result[Options, string] {
+    var help = false;
+    var version = false;
+    var operands: list[string] = [];
+    var output = "";
+    var format = "";
+    var only_operands = false;
+
+    var i = 0;
+    while (i < argv.len()) {
+        let arg = argv[i];
+        i += 1;
+        if (only_operands or arg == "-" or !arg.startsWith("-")) {
+            operands.push(arg);
+            continue;
+        }
+        if (arg == "--") {
+            only_operands = true;
+            continue;
+        }
+
+        var name = arg;
+        var inline_value: Option[string] = None;
+        if (arg.startsWith("--") and arg.contains("=")) {
+            let parts = arg.split("=");
+            name = parts[0];
+            inline_value = Some(parts.slice(1).join("="));
+        }
+
+        if (name == "-o" or name == "--output" or name == "-f" or name == "--format") {
+            var value = "";
+            match inline_value {
+                Some(v) => { value = v; },
+                None => {
+                    if (i >= argv.len()) {
+                        return Err(i"option '{$ name $}' requires an argument");
+                    }
+                    value = argv[i];
+                    i += 1;
+                },
+            }
+            if (name == "-o" or name == "--output") {
+                if (value.len() == 0) {
+                    return Err("the output file name is empty");
+                }
+                output = value;
+            } else {
+                format = parse_format(value)?;
+            }
+            continue;
+        }
+        if (inline_value.is_some()) {
+            return Err(i"option '{$ name $}' doesn't allow an argument");
+        }
+        if (name == "-h" or name == "--help") {
+            help = true;
+        } else if (name == "-V" or name == "--version") {
+            version = true;
+        } else {
+            return Err(i"unrecognized option '{$ name $}'");
+        }
+    }
+
+    var filters: list[Filter] = [];
+    if (!help and !version) {
+        if (operands.len() == 0) {
+            return Err("no input file (use '-' for standard input)");
+        }
+        for (spec in operands.slice(1)) {
+            filters.push(parse_filter(spec)?);
+        }
+    }
+    let input = if (operands.len() > 0) { operands[0] } else { "" };
+    return Ok(Options(
+        help = help,
+        version = version,
+        input = input,
+        output = output,
+        format = format,
+        filters = filters,
+    ));
+}

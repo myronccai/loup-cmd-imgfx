@@ -1,0 +1,61 @@
+@mode(host.native)
+
+from debug.assert import (expect, expectEq);
+from filters.spec import (parse_filter, parse_int, parse_decimal_milli, parse_size);
+from helpers import (expect_text);
+
+func error_of(spec: string): string {
+    return match parse_filter(spec) {
+        Ok(f) => "(ok)",
+        Err(msg) => msg,
+    };
+}
+
+func test_numbers(): void {
+    expectEq(parse_int("-42").unwrap_or(0), -42, "negative");
+    expectEq(parse_int("+7").unwrap_or(0), 7, "plus sign");
+    expect(parse_int("4x").is_none(), "junk");
+    expect(parse_int("").is_none(), "empty");
+    expectEq(parse_decimal_milli("1.5").unwrap_or(0), 1500, "1.5");
+    expectEq(parse_decimal_milli(".25").unwrap_or(0), 250, ".25");
+    expectEq(parse_decimal_milli("2").unwrap_or(0), 2000, "2");
+    expectEq(parse_decimal_milli("0.125").unwrap_or(0), 125, "three decimals");
+    expect(parse_decimal_milli("0.1234").is_none(), "four decimals");
+    expect(parse_decimal_milli("-1").is_none(), "negative");
+    expect(parse_decimal_milli("1.2.3").is_none(), "two points");
+}
+
+func test_sizes(): void {
+    let (w, h) = parse_size("640x480").unwrap();
+    expectEq(w * 10000 + h, 6400480, "640x480");
+    expect(parse_size("0x5").is_none(), "zero");
+    expect(parse_size("5").is_none(), "one number");
+    expect(parse_size("16385x1").is_none(), "too wide");
+}
+
+func test_simple_filters(): void {
+    expect_text(parse_filter("grayscale").unwrap().kind, "grayscale", "grayscale");
+    expect_text(parse_filter("sobel").unwrap().kind, "sobel", "sobel");
+    expectEq(parse_filter("blur").unwrap().a, 1, "default radius");
+    expectEq(parse_filter("gaussian=8").unwrap().a, 8, "gaussian radius");
+    expectEq(parse_filter("brightness=-30").unwrap().a, -30, "brightness");
+    expectEq(parse_filter("contrast=1.25").unwrap().a, 1250, "contrast in thousandths");
+    expectEq(parse_filter("flip=v").unwrap().a, 1, "flip v");
+    let crop = parse_filter("crop=1,2,3,4").unwrap();
+    expectEq(crop.a + crop.b * 10 + crop.c * 100 + crop.d * 1000, 4321, "crop fields");
+    let size = parse_filter("bilinear=8x6").unwrap();
+    expectEq(size.a * 100 + size.b, 806, "bilinear size");
+}
+
+func test_filter_errors(): void {
+    expect_text(error_of("sharpen"), "unknown filter 'sharpen'", "unknown");
+    expect_text(error_of("invert=2"), "'invert' takes no argument", "argument on invert");
+    expect_text(error_of("brightness"), "'brightness' needs an argument: 'brightness=...'", "missing argument");
+    expect_text(error_of("brightness=300"), "'brightness' needs a number from -255 to 255, not '300'", "brightness range");
+    expect_text(error_of("contrast=11"), "'contrast' needs a factor from 0 to 10 (up to 3 decimals), not '11'", "contrast range");
+    expect_text(error_of("blur=0"), "'blur' needs a radius from 1 to 25, not '0'", "blur range");
+    expect_text(error_of("gaussian=9"), "'gaussian' needs a radius from 1 to 8, not '9'", "gaussian range");
+    expect_text(error_of("nearest=10"), "'nearest' needs a size WxH (1 to 16384 each), not '10'", "size");
+    expect_text(error_of("crop=1,2,0,4"), "'crop' needs X,Y,W,H (X, Y from 0; W, H from 1), not '1,2,0,4'", "crop");
+    expect_text(error_of("flip=x"), "'flip' needs h or v, not 'x'", "flip");
+}

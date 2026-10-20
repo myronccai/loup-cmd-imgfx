@@ -1,0 +1,95 @@
+@mode(host.native)
+
+# Resizing, cropping and flipping. Resizes sample the source at the centres
+# of the destination pixels.
+
+from image.image import (Image, ImageError);
+
+func min_int(a: int, b: int): int {
+    return if (a < b) { a } else { b };
+}
+
+pub func resize_nearest(img: Image, dw: int, dh: int): Image {
+    let ch = img.channels;
+    var out: list[int] = [];
+    for (y in 0..dh) {
+        let sy = (2 * y + 1) * img.height / (2 * dh);
+        for (x in 0..dw) {
+            let sx = (2 * x + 1) * img.width / (2 * dw);
+            let base = (sy * img.width + sx) * ch;
+            for (c in 0..ch) {
+                out.push(img.samples[base + c]);
+            }
+        }
+    }
+    return Image(width = dw, height = dh, channels = ch, samples = out);
+}
+
+# The source coordinate of destination pixel `i` in 1/256 pixel, clamped to
+# the source: the centre of pixel i maps to (i + 0.5) * src / dst - 0.5.
+func source_fixed(i: int, src: int, dst: int): int {
+    let f = (2 * i + 1) * src * 256 / (2 * dst) - 128;
+    let last = (src - 1) * 256;
+    return if (f < 0) { 0 } else if (f > last) { last } else { f };
+}
+
+pub func resize_bilinear(img: Image, dw: int, dh: int): Image {
+    let ch = img.channels;
+    let w = img.width;
+    var out: list[int] = [];
+    for (y in 0..dh) {
+        let fy = source_fixed(y, img.height, dh);
+        let y0 = fy >> 8;
+        let y1 = min_int(y0 + 1, img.height - 1);
+        let wy = fy & 255;
+        for (x in 0..dw) {
+            let fx = source_fixed(x, w, dw);
+            let x0 = fx >> 8;
+            let x1 = min_int(x0 + 1, w - 1);
+            let wx = fx & 255;
+            for (c in 0..ch) {
+                let p00 = img.samples[(y0 * w + x0) * ch + c];
+                let p10 = img.samples[(y0 * w + x1) * ch + c];
+                let p01 = img.samples[(y1 * w + x0) * ch + c];
+                let p11 = img.samples[(y1 * w + x1) * ch + c];
+                let top = p00 * (256 - wx) + p10 * wx;
+                let bottom = p01 * (256 - wx) + p11 * wx;
+                out.push((top * (256 - wy) + bottom * wy + 32768) >> 16);
+            }
+        }
+    }
+    return Image(width = dw, height = dh, channels = ch, samples = out);
+}
+
+pub func crop(img: Image, x0: int, y0: int, cw: int, chh: int): Image {
+    if (x0 + cw > img.width or y0 + chh > img.height) {
+        throw ImageError(i"crop {$ x0 $},{$ y0 $},{$ cw $},{$ chh $} is outside the {$ img.width $}x{$ img.height $} image");
+    }
+    let ch = img.channels;
+    var out: list[int] = [];
+    for (y in y0..y0 + chh) {
+        let start = (y * img.width + x0) * ch;
+        for (i in start..start + cw * ch) {
+            out.push(img.samples[i]);
+        }
+    }
+    return Image(width = cw, height = chh, channels = ch, samples = out);
+}
+
+# Mirrors left-right (vertical = false) or top-bottom (vertical = true).
+pub func flip(img: Image, vertical: bool): Image {
+    let ch = img.channels;
+    let w = img.width;
+    var out: list[int] = [];
+    for (y in 0..img.height) {
+        let sy = if (vertical) { img.height - 1 - y } else { y };
+        for (x in 0..w) {
+            let sx = if (vertical) { x } else { w - 1 - x };
+            let base = (sy * w + sx) * ch;
+            for (c in 0..ch) {
+                out.push(img.samples[base + c]);
+            }
+        }
+    }
+    return Image(width = w, height = img.height, channels = ch, samples = out);
+}

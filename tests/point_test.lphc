@@ -1,0 +1,31 @@
+@mode(host.native)
+
+from debug.assert import (expect, expectEq);
+from image.image import (luma, round_div, to_rgb);
+from filters.point import (grayscale, invert, brightness, contrast);
+from helpers import (expect_text, image, describe);
+
+func test_grayscale(): void {
+    let img = image(3, 1, 3, [255, 0, 0, 0, 255, 0, 255, 255, 255]);
+    expect_text(describe(grayscale(img)), "3x1x1: 77 149 255", "luma of red, green, white");
+    expectEq(luma(0, 0, 255), 29, "blue");
+    let gray = image(1, 1, 1, [9]);
+    expect_text(describe(grayscale(gray)), "1x1x1: 9", "gray stays gray");
+    expect_text(describe(to_rgb(gray)), "1x1x3: 9 9 9", "gray to RGB");
+}
+
+func test_invert(): void {
+    expect_text(describe(invert(image(3, 1, 1, [0, 100, 255]))), "3x1x1: 255 155 0", "invert");
+}
+
+func test_brightness_clamps(): void {
+    expect_text(describe(brightness(image(3, 1, 1, [0, 100, 250]), 10)), "3x1x1: 10 110 255", "up");
+    expect_text(describe(brightness(image(3, 1, 1, [0, 100, 250]), -120)), "3x1x1: 0 0 130", "down");
+}
+
+func test_contrast(): void {
+    expect_text(describe(contrast(image(4, 1, 1, [0, 100, 128, 200]), 1500)), "4x1x1: 0 86 128 236", "factor 1.5");
+    expect_text(describe(contrast(image(2, 1, 1, [0, 255]), 0)), "2x1x1: 128 128", "factor 0");
+    expectEq(round_div(-5, 2), -3, "halves away from zero, negative");
+    expectEq(round_div(5, 2), 3, "halves away from zero, positive");
+}

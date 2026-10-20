@@ -1,0 +1,125 @@
+@mode(host.native)
+
+# Neighbourhood filters. Pixels beyond the border repeat the edge pixel.
+# Blurs are separable: a horizontal pass that keeps unnormalized sums, then
+# a vertical pass, then one rounded division, so the result is exact.
+
+from image.image import (Image, to_gray);
+
+func clamp_index(i: int, n: int): int {
+    return if (i < 0) { 0 } else if (i >= n) { n - 1 } else { i };
+}
+
+# Row 2R of Pascal's triangle: the binomial weights C(2R, k). They sum to
+# 4^R and approximate a Gaussian with sigma = sqrt(R / 2).
+pub func binomial_row(r: int): list[int] {
+    var row = [1];
+    for (n in 0..2 * r) {
+        var next = [1];
+        for (k in 1..row.len()) {
+            next.push(row[k - 1] + row[k]);
+        }
+        next.push(1);
+        row = next;
+    }
+    return row;
+}
+
+# Convolves with the separable kernel `weights` (odd length) in both
+# directions and divides by `divisor`, rounding to nearest.
+func separable(img: Image, weights: list[int], divisor: int): Image {
+    let w = img.width;
+    let h = img.height;
+    let ch = img.channels;
+    let r = weights.len() / 2;
+    var tmp: list[int] = [];
+    for (y in 0..h) {
+        let row = y * w;
+        for (x in 0..w) {
+            for (c in 0..ch) {
+                var sum = 0;
+                for (k in 0..weights.len()) {
+                    let xx = clamp_index(x + k - r, w);
+                    sum += weights[k] * img.samples[(row + xx) * ch + c];
+                }
+                tmp.push(sum);
+            }
+        }
+    }
+    var out: list[int] = [];
+    let half = divisor / 2;
+    for (y in 0..h) {
+        for (x in 0..w) {
+            for (c in 0..ch) {
+                var sum = 0;
+                for (k in 0..weights.len()) {
+                    let yy = clamp_index(y + k - r, h);
+                    sum += weights[k] * tmp[(yy * w + x) * ch + c];
+                }
+                out.push((sum + half) / divisor);
+            }
+        }
+    }
+    return Image(width = w, height = h, channels = ch, samples = out);
+}
+
+# The mean of the (2R+1) x (2R+1) window.
+pub func box_blur(img: Image, r: int): Image {
+    var weights: list[int] = [];
+    for (k in 0..2 * r + 1) {
+        weights.push(1);
+    }
+    return separable(img, weights, (2 * r + 1) * (2 * r + 1));
+}
+
+pub func gaussian_blur(img: Image, r: int): Image {
+    var divisor = 1;
+    for (k in 0..2 * r) {
+        divisor = divisor * 4;
+    }
+    return separable(img, binomial_row(r), divisor);
+}
+
+# floor(sqrt(n)) for n >= 0, by Newton's method on integers.
+pub func isqrt(n: int): int {
+    if (n < 2) {
+        return n;
+    }
+    var x = n;
+    var y = (x + 1) / 2;
+    while (y < x) {
+        x = y;
+        y = (x + n / x) / 2;
+    }
+    return x;
+}
+
+# Gradient magnitude of the 3x3 Sobel operator on the grayscale image.
+pub func sobel(img: Image): Image {
+    let g = to_gray(img);
+    let w = g.width;
+    let h = g.height;
+    var out: list[int] = [];
+    for (y in 0..h) {
+        let up = clamp_index(y - 1, h) * w;
+        let mid = y * w;
+        let down = clamp_index(y + 1, h) * w;
+        for (x in 0..w) {
+            let left = clamp_index(x - 1, w);
+            let right = clamp_index(x + 1, w);
+            let tl = g.samples[up + left];
+            let tc = g.samples[up + x];
+            let tr = g.samples[up + right];
+            let ml = g.samples[mid + left];
+            let mr = g.samples[mid + right];
+            let bl = g.samples[down + left];
+            let bc = g.samples[down + x];
+            let br = g.samples[down + right];
+            let gx = (tr + 2 * mr + br) - (tl + 2 * ml + bl);
+            let gy = (bl + 2 * bc + br) - (tl + 2 * tc + tr);
+            let m = isqrt(gx * gx + gy * gy);
+            out.push(if (m > 255) { 255 } else { m });
+        }
+    }
+    return Image(width = w, height = h, channels = 1, samples = out);
+}

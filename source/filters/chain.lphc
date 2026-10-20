@@ -1,0 +1,43 @@
+@mode(host.native)
+
+# Applies parsed filters to an image, left to right.
+
+from image.image import (Image);
+from filters.spec import (Filter);
+from filters.point import (grayscale, invert, brightness, contrast);
+from filters.convolve import (box_blur, gaussian_blur, sobel);
+from filters.geometry import (resize_nearest, resize_bilinear, crop, flip);
+
+pub func apply_filter(img: Image, f: Filter): Image {
+    let k = f.kind;
+    if (k == "grayscale") {
+        return grayscale(img);
+    } else if (k == "invert") {
+        return invert(img);
+    } else if (k == "brightness") {
+        return brightness(img, f.a);
+    } else if (k == "contrast") {
+        return contrast(img, f.a);
+    } else if (k == "blur") {
+        return box_blur(img, f.a);
+    } else if (k == "gaussian") {
+        return gaussian_blur(img, f.a);
+    } else if (k == "sobel") {
+        return sobel(img);
+    } else if (k == "nearest") {
+        return resize_nearest(img, f.a, f.b);
+    } else if (k == "bilinear") {
+        return resize_bilinear(img, f.a, f.b);
+    } else if (k == "crop") {
+        return crop(img, f.a, f.b, f.c, f.d);
+    }
+    return flip(img, f.a == 1);
+}
+
+pub func apply_all(img: Image, filters: list[Filter]): Image {
+    var current = img;
+    for (f in filters) {
+        current = apply_filter(current, f);
+    }
+    return current;
+}

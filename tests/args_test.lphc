@@ -1,0 +1,39 @@
+@mode(host.native)
+
+from debug.assert import (expect, expectEq);
+from cli.args import (parse_args, parse_format);
+from helpers import (expect_text);
+
+func test_input_and_filters(): void {
+    let opts = parse_args(["in.ppm", "blur=2", "invert"]).unwrap();
+    expect_text(opts.input, "in.ppm", "input");
+    expectEq(opts.filters.len(), 2, "two filters");
+    expect_text(opts.filters[1].kind, "invert", "order kept");
+    expect_text(opts.output, "", "standard output");
+}
+
+func test_options(): void {
+    let opts = parse_args(["-o", "out.pgm", "in.ppm", "--format=p5", "sobel"]).unwrap();
+    expect_text(opts.output, "out.pgm", "-o");
+    expect_text(opts.format, "5", "--format=p5");
+    expect_text(parse_args(["--output=x", "-f", "3", "-"]).unwrap().format, "3", "-f 3");
+    expect_text(parse_args(["-", "invert"]).unwrap().input, "-", "stdin");
+    expect_text(parse_args(["--", "-odd.ppm"]).unwrap().input, "-odd.ppm", "after --");
+}
+
+func test_formats(): void {
+    expect_text(parse_format("P6").unwrap(), "6", "P6");
+    expect(parse_format("P4").is_err(), "P4");
+    expect(parse_format("png").is_err(), "png");
+}
+
+func test_errors(): void {
+    let none: list[string] = [];
+    expect(parse_args(none).is_err(), "no input");
+    expect(parse_args(["in.ppm", "sharpen"]).is_err(), "unknown filter");
+    expect(parse_args(["in.ppm", "--bogus"]).is_err(), "unknown option");
+    expect(parse_args(["in.ppm", "-o"]).is_err(), "-o without a value");
+    expect(parse_args(["in.ppm", "--help=1"]).is_err(), "value on a flag");
+    expect(parse_args(["--help"]).unwrap().help, "help needs no input");
+    expect(parse_args(["-V"]).unwrap().version, "version");
+}
