@@ -1,7 +1,12 @@
 @mode(host.native)
 
-# Resizing, cropping and flipping. Resizes sample the source at the centres
-# of the destination pixels.
+# imgfx's resizing (nearest neighbour and bilinear), cropping and flipping.
+# Resizes sample the source at the centres of the destination pixels.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`. tests/geometry_test.lphc
+# checks it in native test binaries.
 
 from image.image import (Image, ImageError);
 
@@ -47,6 +52,8 @@ pub func resize_bilinear(img: Image, dw: int, dh: int): Image {
             let x0 = fx >> 8;
             let x1 = min_int(x0 + 1, w - 1);
             let wx = fx & 255;
+            # Weights wx, wy are in 1/256, so the blend is scaled by 65536;
+            # adding 32768 before the shift rounds to nearest.
             for (c in 0..ch) {
                 let p00 = img.samples[(y0 * w + x0) * ch + c];
                 let p10 = img.samples[(y0 * w + x1) * ch + c];

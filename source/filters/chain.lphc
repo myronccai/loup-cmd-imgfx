@@ -1,6 +1,11 @@
 @mode(host.native)
 
-# Applies parsed filters to an image, left to right.
+# Applies parsed imgfx filters to an image, left to right: the dispatch from
+# a Filter's kind to the function that implements it.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`.
 
 from image.image import (Image);
 from filters.spec import (Filter);
@@ -31,6 +36,7 @@ pub func apply_filter(img: Image, f: Filter): Image {
     } else if (k == "crop") {
         return crop(img, f.a, f.b, f.c, f.d);
     }
+    # parse_filter accepts no other kind, so what is left is flip.
     return flip(img, f.a == 1);
 }
 

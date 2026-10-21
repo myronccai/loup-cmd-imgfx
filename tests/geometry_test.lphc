@@ -1,5 +1,14 @@
 @mode(host.native)
 
+# Unit tests for imgfx resizing, cropping and flipping
+# (filters/geometry.lphc) on tiny hand-made images.
+#
+# Runtime: host.native, run by the test runner: `make test` runs
+# `loup-bootstrap test --native`, which compiles each `func test_*()` here,
+# with the modules it imports from source/ and tests/ (both on LOUPPATH),
+# into its own native binary and runs it. Not part of build/imgfx, and not
+# run by the interpreter lane (`make parity` runs tests/e2e.sh).
+
 from debug.assert import (expect, expectEq);
 from image.image import (ImageError);
 from filters.geometry import (resize_nearest, resize_bilinear, crop, flip);

@@ -1,6 +1,13 @@
 @mode(host.native)
 
-# Command-line parsing. Grammar: [OPTIONS] INPUT [FILTER...]
+# Command-line parsing for imgfx.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`. tests/args_test.lphc
+# checks it in native test binaries.
+#
+# Grammar: [OPTIONS] INPUT [FILTER...]
 #   Options may appear anywhere before `--`; everything after `--` is an
 #   operand. Value options accept `--name VALUE` and `--name=VALUE`.
 #   Every filter is parsed here, before the input is read.

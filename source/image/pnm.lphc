@@ -1,9 +1,21 @@
 @mode(host.native)
 
-# Netpbm PGM and PPM: P2 and P3 are plain text, P5 and P6 binary. The header
-# is the magic number, width, height and maximum value, separated by
-# whitespace, with `#` comments to the end of a line. A binary raster starts
-# after exactly one whitespace byte.
+# Netpbm PGM and PPM decoding and encoding for imgfx: P2 and P3 are plain
+# text, P5 and P6 binary.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`. tests/pnm_test.lphc
+# checks it in native test binaries.
+#
+# Format: the header is the magic number, width, height and maximum value,
+# separated by whitespace, with `#` comments to the end of a line. A binary
+# raster starts after exactly one whitespace byte; a plain one is decimal
+# numbers separated like the header.
+#
+# Structure: a byte cursor and the header readers, decode_pnm() (header,
+# raster, then every sample checked and scaled to 0..255), the output format
+# choice, and encode_pnm(), which always writes maximum value 255.
 
 from image.image import (Image, ImageError);
 
@@ -102,6 +114,8 @@ pub func decode_pnm(data: bytes): Image {
             samples.push(read_number(data, edits: cur, "sample"));
         }
     }
+    # Check every sample against the maximum value and scale it to 0..255,
+    # so the filters only ever see 8-bit samples.
     for (i in 0..count) {
         let v = samples[i];
         if (v > maxval) {

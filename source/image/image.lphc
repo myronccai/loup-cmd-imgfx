@@ -1,7 +1,12 @@
 @mode(host.native)
 
-# An 8-bit image: `channels` samples per pixel (1 = gray, 3 = RGB), stored
-# row-major with the channels interleaved, every sample 0..255.
+# The imgfx image: 8-bit samples, `channels` per pixel (1 = gray, 3 = RGB),
+# stored row-major with the channels interleaved, every sample 0..255.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`. The filter tests check
+# it in native test binaries.
 
 pub struct Image {
     pub width: int;

@@ -1,8 +1,16 @@
 @mode(host.native)
 
-# Neighbourhood filters. Pixels beyond the border repeat the edge pixel.
-# Blurs are separable: a horizontal pass that keeps unnormalized sums, then
-# a vertical pass, then one rounded division, so the result is exact.
+# imgfx's neighbourhood filters: box blur, Gaussian (binomial) blur and the
+# Sobel edge magnitude. Pixels beyond the border repeat the edge pixel.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`. tests/convolve_test.lphc
+# checks it in native test binaries; `make bench` times it in both lanes.
+#
+# Structure: blurs are separable: a horizontal pass that keeps unnormalized
+# sums, then a vertical pass, then one rounded division, so the result is
+# exact. Sobel works on the grayscale image with an integer square root.
 
 from image.image import (Image, to_gray);
 
@@ -32,6 +40,8 @@ func separable(img: Image, weights: list[int], divisor: int): Image {
     let h = img.height;
     let ch = img.channels;
     let r = weights.len() / 2;
+    # Pass 1, horizontal: unnormalized weighted sums, kept at full
+    # precision in `tmp` (same layout as the samples).
     var tmp: list[int] = [];
     for (y in 0..h) {
         let row = y * w;
@@ -46,6 +56,8 @@ func separable(img: Image, weights: list[int], divisor: int): Image {
             }
         }
     }
+    # Pass 2, vertical over `tmp`, then the one rounded division: the
+    # divisor is the product of both passes' weight sums.
     var out: list[int] = [];
     let half = divisor / 2;
     for (y in 0..h) {

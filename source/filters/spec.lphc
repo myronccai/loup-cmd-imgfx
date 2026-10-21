@@ -1,8 +1,14 @@
 @mode(host.native)
 
-# Filter specifications: `name` or `name=ARGS`, checked before the image is
-# read. Kinds are compared with == rather than `match`: in Loup 1.26.0 a
-# string `match` always takes its `_` arm in native code.
+# imgfx filter specifications: `name` or `name=ARGS`, checked before the
+# image is read.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`. tests/spec_test.lphc
+# checks it in native test binaries. Kinds are compared with == rather than
+# `match`: in Loup 1.26.0 a string `match` always takes its `_` arm in
+# native code.
 
 pub struct Filter {
     pub kind: string;
@@ -117,6 +123,7 @@ pub func parse_filter(spec: string): Result[Filter, string] {
     if (name == "gaussian") {
         return radius(name, value, has_value, 8);
     }
+    # Every other kind needs `=ARGS`.
     if (!has_value) {
         if (name == "brightness" or name == "contrast" or name == "nearest" or name == "bilinear" or name == "crop" or name == "flip") {
             return Err(i"'{$ name $}' needs an argument: '{$ name $}=...'");

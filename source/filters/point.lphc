@@ -1,6 +1,12 @@
 @mode(host.native)
 
-# Filters that map each sample on its own.
+# imgfx filters that map each sample on its own: grayscale, invert,
+# brightness and contrast.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`. tests/point_test.lphc
+# checks it in native test binaries.
 
 from image.image import (Image, clamp, round_div, to_gray);
 

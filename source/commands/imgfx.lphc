@@ -1,7 +1,13 @@
 @mode(host.native)
 
-# Read, filter, write. The work is in pure functions (decode_pnm, apply_all,
-# convert, encode_pnm); this module only does the I/O.
+# The imgfx command: read, filter, write. The work is in pure functions
+# (decode_pnm, apply_all, to_gray or to_rgb, encode_pnm); this module only
+# does the I/O.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`, and tests/e2e.sh checks
+# that both lanes write the same bytes.
 
 from appinfo import (EXIT_OK);
 from cli.args import (Options);

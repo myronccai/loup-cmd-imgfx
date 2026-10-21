@@ -1,5 +1,13 @@
 @mode(host.native)
 
+# Top level of imgfx: parse the arguments, answer --help and --version, run
+# the filters and turn an exception (bad input or output) into exit status 1.
+#
+# Runtime: host.native. Compiled into the native binary build/imgfx by
+# `make build` (Stage0 native build); `make run` and `make parity` interpret
+# the same code with Stage0's `loup-bootstrap run`. tests/app_test.lphc
+# calls run() inside native test binaries.
+
 from appinfo import (APP_NAME, EXIT_OK, EXIT_FAILURE, EXIT_USAGE);
 from cli.args import (parse_args);
 from cli.usage import (usage, version_line);

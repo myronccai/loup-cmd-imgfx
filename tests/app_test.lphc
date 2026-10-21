@@ -1,7 +1,14 @@
 @mode(host.native)
 
-# Exit statuses through run(). Paths are relative to the test binary's
-# temporary working directory, so the fixtures are written there first.
+# Unit tests for imgfx's exit statuses and output files through run(). Paths
+# are relative to the test binary's temporary working directory, so the
+# fixtures are written there first.
+#
+# Runtime: host.native, run by the test runner: `make test` runs
+# `loup-bootstrap test --native`, which compiles each `func test_*()` here,
+# with the modules it imports from source/ and tests/ (both on LOUPPATH),
+# into its own native binary and runs it. Not part of build/imgfx, and not
+# run by the interpreter lane (`make parity` runs tests/e2e.sh).
 
 from debug.assert import (expectEq);
 from appinfo import (EXIT_OK, EXIT_FAILURE, EXIT_USAGE);

@@ -1,5 +1,13 @@
 @mode(host.native)
 
+# Unit tests for imgfx's argument parser (cli/args.lphc).
+#
+# Runtime: host.native, run by the test runner: `make test` runs
+# `loup-bootstrap test --native`, which compiles each `func test_*()` here,
+# with the modules it imports from source/ and tests/ (both on LOUPPATH),
+# into its own native binary and runs it. Not part of build/imgfx, and not
+# run by the interpreter lane (`make parity` runs tests/e2e.sh).
+
 from debug.assert import (expect, expectEq);
 from cli.args import (parse_args, parse_format);
 from helpers import (expect_text);
