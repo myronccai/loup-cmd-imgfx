@@ -7,11 +7,26 @@
 # `make build` (Stage0 native build); `make run` and `make parity` interpret
 # the same code with Stage0's `loup-bootstrap run`. tests/point_test.lphc
 # checks it in native test binaries.
+#
+# Structure: every filter here is a function of the sample alone, so each
+# one is a lambda that lut() evaluates once per possible value into a
+# 256-entry table, and map_samples() then only looks samples up.
 
-from image.image import (Image, clamp, round_div, to_gray);
+from image.image import (Image, clamp_sample, round_div, to_gray);
 
 pub func grayscale(img: Image): Image {
     return to_gray(img);
+}
+
+## The 256-entry table of `f`: entry v is f(v). `f` is `noescape`: it is
+## only called during lut(), so a lambda may capture the caller's locals
+## (the brightness delta, the contrast factor) without them outliving it.
+pub func lut(f: noescape fn(int): int): list[int] {
+    var table: list[int] = [];
+    for (v in 0..256) {
+        table.push(f(v));
+    }
+    return table;
 }
 
 func map_samples(img: Image, table: list[int]): Image {
@@ -19,32 +34,19 @@ func map_samples(img: Image, table: list[int]): Image {
     for (v in img.samples) {
         out.push(table[v]);
     }
-    return Image(width = img.width, height = img.height, channels = img.channels, samples = out);
+    return img with (samples = out);
 }
 
-# Every filter here is a function of the sample alone, so it is computed
-# once per value into a 256-entry table.
 pub func invert(img: Image): Image {
-    var table: list[int] = [];
-    for (v in 0..256) {
-        table.push(255 - v);
-    }
-    return map_samples(img, table);
+    return map_samples(img, lut(func(v: int) => 255 - v));
 }
 
 pub func brightness(img: Image, delta: int): Image {
-    var table: list[int] = [];
-    for (v in 0..256) {
-        table.push(clamp(v + delta));
-    }
-    return map_samples(img, table);
+    return map_samples(img, lut(func(v: int) => clamp_sample(v + delta)));
 }
 
 # 128 + (v - 128) * factor, with the factor in thousandths.
 pub func contrast(img: Image, milli: int): Image {
-    var table: list[int] = [];
-    for (v in 0..256) {
-        table.push(clamp(128 + round_div((v - 128) * milli, 1000)));
-    }
-    return map_samples(img, table);
+    return map_samples(img,
+        lut(func(v: int) => clamp_sample(128 + round_div((v - 128) * milli, 1000))));
 }

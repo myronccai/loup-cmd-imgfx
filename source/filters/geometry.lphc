@@ -27,7 +27,7 @@ pub func resize_nearest(img: Image, dw: int, dh: int): Image {
             }
         }
     }
-    return Image(width = dw, height = dh, channels = ch, samples = out);
+    return img with (width = dw, height = dh, samples = out);
 }
 
 # The source coordinate of destination pixel `i` in 1/256 pixel, clamped to
@@ -65,7 +65,7 @@ pub func resize_bilinear(img: Image, dw: int, dh: int): Image {
             }
         }
     }
-    return Image(width = dw, height = dh, channels = ch, samples = out);
+    return img with (width = dw, height = dh, samples = out);
 }
 
 pub func crop(img: Image, x0: int, y0: int, cw: int, chh: int): Image {
@@ -80,7 +80,7 @@ pub func crop(img: Image, x0: int, y0: int, cw: int, chh: int): Image {
             out.push(img.samples[i]);
         }
     }
-    return Image(width = cw, height = chh, channels = ch, samples = out);
+    return img with (width = cw, height = chh, samples = out);
 }
 
 # Mirrors left-right (vertical = false) or top-bottom (vertical = true).
@@ -98,5 +98,5 @@ pub func flip(img: Image, vertical: bool): Image {
             }
         }
     }
-    return Image(width = w, height = img.height, channels = ch, samples = out);
+    return img with (samples = out);
 }

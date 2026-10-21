@@ -58,8 +58,9 @@ formats so that I can use the tool with other image software.
    pixel centres; bilinear SHALL use 8-bit fixed-point weights.
 9. `crop=X,Y,W,H` SHALL cut the rectangle, which must lie inside the image.
 10. `flip=h` and `flip=v` SHALL mirror horizontally and vertically.
-11. All filters SHALL use integer arithmetic only, so the interpreter and the
-    native binary produce identical bytes.
+11. All filters SHALL give the interpreter and the native binary identical
+    bytes: integer arithmetic, and floating point only where it is exact
+    (Sobel's floored square root).
 
 ### Requirement 3: Command line
 
@@ -77,6 +78,9 @@ formats so that I can use the tool with other image software.
    with status 2, before reading the input.
 4. Exit statuses: 0 success, 1 bad or unreadable input or unwritable output,
    2 usage error.
+5. WHEN `--profile` is given, THE program SHALL report the time of decoding,
+   of each filter and of encoding on standard error, leaving the image
+   output unchanged.
 
 ### Requirement 4: Speed
 

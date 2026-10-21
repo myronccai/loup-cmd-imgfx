@@ -24,14 +24,14 @@ kind of tight integer loops where that matters.
 | `source/cli/args.lphc` | `Options`, `parse_args` |
 | `source/cli/usage.lphc` | `usage()`, `version_line()` |
 | `source/cli/app.lphc` | `run()`: parse, help/version, run, map errors to statuses |
-| `source/image/image.lphc` | `Image` (width, height, channels, samples), `to_gray`, `to_rgb`, `clamp` |
-| `source/image/pnm.lphc` | `decode_pnm(bytes)`, `encode_pnm(image, format)` (byte values as `list[int]`), `output_format` |
+| `source/image/image.lphc` | `Image` (width, height, channels, samples), `to_gray`, `to_rgb`, `clamp_sample`, `round_div` |
+| `source/image/pnm.lphc` | `decode_pnm(bytes)` (header read with an `io.streams.ByteReader`), `encode_pnm(image, format)` (byte values as `list[int]`), `output_format` |
 | `source/filters/spec.lphc` | `Filter`, `parse_filter`, `parse_decimal_milli`, `parse_size` |
-| `source/filters/point.lphc` | `grayscale`, `invert`, `brightness`, `contrast` |
+| `source/filters/point.lphc` | `grayscale`, `invert`, `brightness`, `contrast`, `lut(f)` (256-entry table of a lambda) |
 | `source/filters/convolve.lphc` | `box_blur`, `gaussian_blur`, `sobel`, `binomial_row`, `isqrt` |
 | `source/filters/geometry.lphc` | `resize_nearest`, `resize_bilinear`, `crop`, `flip` |
-| `source/filters/chain.lphc` | `apply_filter`, `apply_all` |
-| `source/commands/imgfx.lphc` | `run_imgfx`: read, filter, write |
+| `source/filters/chain.lphc` | `apply_filter`, `apply_all` (one profiler span per filter) |
+| `source/commands/imgfx.lphc` | `process` (decode, filters, encode as `debug.profiler` spans), `render_profile`, `run_imgfx`: read, filter, write |
 
 ### Images
 
@@ -42,15 +42,19 @@ list[int]`, row-major with interleaved channels, every sample 0..255.
 
 - Box blur: a horizontal pass of window sums, a vertical pass of sums of
   sums, one rounded division by (2R+1)².
-- Gaussian: the same with binomial weights C(2R, k); the divisor is 16^R.
+- Gaussian: the same with binomial weights C(2R, k); the divisor is
+  `4 ** (2 * R)` = 16^R.
 - Contrast: the factor is parsed to thousandths; `(v − 128) × F / 1000` is
   rounded half away from zero.
 - Bilinear: source coordinates in 1/256 pixel,
   `fx = ((2x + 1) × sw × 256) / (2 × dw) − 128`, clamped to the image;
   weights are the low 8 bits.
-- Sobel: `isqrt` by Newton's method on integers.
+- Sobel: `isqrt` is `floor(sqrt(n))` with `core.math`. The only float in the
+  program, and exact: n ≤ 2 × 1020², a double holds it exactly, `sqrt` is
+  correctly rounded, and just below k² the true root is about 1/(2k) under
+  k, far more than the rounding error (a unit test checks every n).
 
-No float means no rounding differences between the interpreter and LLVM, so
+So there is no rounding difference between the interpreter and LLVM, and
 the golden files hold for both lanes.
 
 ## Differences from other tools

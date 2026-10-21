@@ -4,8 +4,9 @@
 # error messages and exit statuses with the expected ones.
 #
 # usage: tests/e2e.sh COMMAND
-#   COMMAND is the built binary (build/imgfx) or, for `make parity`, the
-#   interpreter: "loup run source/main.lphc --". Both must pass unchanged.
+#   COMMAND is the built binary (build/imgfx) or, for `make parity`, Stage0's
+#   interpreter: "loup-bootstrap run source/main.lphc --". Both must pass
+#   unchanged.
 
 set -u
 read -r -a CMD <<< "$1"
@@ -82,6 +83,15 @@ run $FIX/rgb.ppm -o "$TMP/out.ppm" invert
 [ "$status" -eq 0 ] && [ ! -s "$TMP/out" ] && cmp -s "$TMP/out.ppm" $FIX/expected/rgb.invert.ppm && ok || bad "-o FILE"
 golden "-o -"  rgb.invert.ppm  $FIX/rgb.ppm -o - invert
 golden "options after filters"  rgb.p2.pgm  $FIX/rgb.ppm contrast=0.5 --format P2
+
+# --profile: the image is unchanged, and standard error names each step in
+# the order it ran (the times differ on every run, so only the names are
+# compared).
+run --profile $FIX/rgb.ppm gaussian sobel invert
+steps=$(sed -n '2,$p' "$TMP/err" | sed -E 's/^  (.*[^ ]) +[0-9]+\.[0-9]{3}$/\1/' | paste -sd, -)
+[ "$status" -eq 0 ] && cmp -s "$TMP/out" $FIX/expected/rgb.chain.pgm \
+    && [ "$(head -1 "$TMP/err")" = "imgfx: profile (milliseconds)" ] \
+    && [ "$steps" = "decode,1 gaussian,2 sobel,3 invert,encode,total" ] && ok || bad "--profile ($steps)"
 
 # --- bad input (status 1) ----------------------------------------------------
 printf 'GIF89a' > "$TMP/x.gif"

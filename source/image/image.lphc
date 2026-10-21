@@ -17,7 +17,10 @@ pub struct Image {
 
 pub class ImageError : Exception {}
 
-pub func clamp(v: int): int {
+# Not named `clamp`: core.math has a clamp too, and in the Stage0 native
+# build a lambda's call goes to whichever function of that name the
+# program contains (the point filters' lambdas call this one).
+pub func clamp_sample(v: int): int {
     return if (v < 0) { 0 } else if (v > 255) { 255 } else { v };
 }
 
@@ -47,7 +50,7 @@ pub func to_gray(img: Image): Image {
         out.push(luma(img.samples[i], img.samples[i + 1], img.samples[i + 2]));
         i += 3;
     }
-    return Image(width = img.width, height = img.height, channels = 1, samples = out);
+    return img with (channels = 1, samples = out);
 }
 
 # Three channels: gray copied to R, G and B; RGB unchanged.
@@ -61,5 +64,5 @@ pub func to_rgb(img: Image): Image {
         out.push(v);
         out.push(v);
     }
-    return Image(width = img.width, height = img.height, channels = 3, samples = out);
+    return img with (channels = 3, samples = out);
 }

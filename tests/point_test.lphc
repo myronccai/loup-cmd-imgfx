@@ -11,7 +11,7 @@
 
 from debug.assert import (expect, expectEq);
 from image.image import (luma, round_div, to_rgb);
-from filters.point import (grayscale, invert, brightness, contrast);
+from filters.point import (grayscale, invert, brightness, contrast, lut);
 from helpers import (expect_text, image, describe);
 
 func test_grayscale(): void {
@@ -21,6 +21,14 @@ func test_grayscale(): void {
     let gray = image(1, 1, 1, [9]);
     expect_text(describe(grayscale(gray)), "1x1x1: 9", "gray stays gray");
     expect_text(describe(to_rgb(gray)), "1x1x3: 9 9 9", "gray to RGB");
+}
+
+func test_lut(): void {
+    let offset = 3;
+    let table = lut(func(v: int) => v * 2 + offset);
+    expectEq(table.len(), 256, "one entry per sample value");
+    expectEq(table[0], 3, "f(0)");
+    expectEq(table[255], 513, "f(255)");
 }
 
 func test_invert(): void {

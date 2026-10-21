@@ -9,7 +9,8 @@
 #
 # Grammar: [OPTIONS] INPUT [FILTER...]
 #   Options may appear anywhere before `--`; everything after `--` is an
-#   operand. Value options accept `--name VALUE` and `--name=VALUE`.
+#   operand. Value options accept `--name VALUE` and `--name=VALUE`;
+#   --profile and the others take no value.
 #   Every filter is parsed here, before the input is read.
 
 from filters.spec import (Filter, parse_filter);
@@ -23,6 +24,8 @@ pub struct Options {
     # "", "2", "3", "5" or "6"
     pub format: string;
     pub filters: list[Filter];
+    # --profile: report each step's time on standard error
+    pub profile: bool;
 }
 
 # "P6", "p6" or "6" -> "6"; Err for anything else.
@@ -40,6 +43,7 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
     var operands: list[string] = [];
     var output = "";
     var format = "";
+    var profile = false;
     var only_operands = false;
 
     var i = 0;
@@ -92,6 +96,8 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
             help = true;
         } else if (name == "-V" or name == "--version") {
             version = true;
+        } else if (name == "--profile") {
+            profile = true;
         } else {
             return Err(i"unrecognized option '{$ name $}'");
         }
@@ -114,5 +120,6 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
         output = output,
         format = format,
         filters = filters,
+        profile = profile,
     ));
 }

@@ -16,3 +16,6 @@
   - _Requirements: all_
 - [x] 8. `make bench`
   - _Requirements: 4.1_
+- [x] 9. `--profile`: `debug.profiler` spans for decoding, each filter and
+  encoding, reported on standard error
+  - _Requirements: 3.5_

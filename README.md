@@ -31,15 +31,22 @@ This one is a `host.native` (host-compiled) project.
   The interpreter is Stage0's, for the reason under Limits.)
 
 - **One source, two lanes, identical bytes.** Every filter uses integer
-  arithmetic only (fixed-point bilinear weights, binomial Gaussian weights,
-  an integer square root for Sobel), so the interpreter and LLVM cannot
-  round differently. `make ci` runs the end-to-end tests against the golden
+  arithmetic (fixed-point bilinear weights, binomial Gaussian weights); the
+  one floating-point step, Sobel's square root, is a correctly rounded
+  `core.math.sqrt` floored to an integer, which is exact for every value
+  Sobel can produce (a unit test checks all of them). So the interpreter
+  and LLVM cannot round differently. `make ci` runs the end-to-end tests against the golden
   files twice: on the binary (`make e2e`) and through the interpreter
   (`make parity`).
 - **Pure functions.** Decoding, every filter and encoding take values and
   return values (`Image`, a list of byte values), so the unit tests need no
   files; the golden outputs were cross-checked against an independent
   implementation of the same formulas.
+
+- **Where the time goes.** `--profile` times decoding, each filter and
+  encoding as `debug.profiler` spans and reports them on standard error;
+  the unit tests drive the same code with `Profiler.manual()`, whose clock
+  moves only when told to, to check exact numbers.
 
 `host.native` is what lets a program be shipped as a native binary at all;
 this project uses no `asm` or `unique class` (see loup-cmd-cpuid and
@@ -136,6 +143,20 @@ imgfx: unknown filter 'sharpen'
 Try 'imgfx --help' for more information.
 ```
 
+`--profile` reports each step's time on standard error, so the image on
+standard output or in `-o` is unchanged (here a 512×512 noise image):
+
+```text
+$ build/imgfx --profile noise.ppm -o n.pgm gaussian=2 sobel bilinear=384x384
+imgfx: profile (milliseconds)
+  decode            11.917
+  1 gaussian        33.859
+  2 sobel           24.519
+  3 bilinear         5.786
+  encode             1.858
+  total             77.940
+```
+
 ## Filters and options
 
 ```text
@@ -162,6 +183,7 @@ Options:
   -o, --output FILE     write FILE instead of standard output
   -f, --format FMT      output format P2, P3, P5 or P6 (default: the
                         input's plain/binary encoding, gray or color)
+      --profile         report the time of each step on standard error
   -h, --help            show this help and exit
   -V, --version         show the version and exit
 
@@ -187,7 +209,11 @@ Exit status: 0 success, 1 bad input or output, 2 usage error.
   per side).
 - Standard output is written by reopening `/dev/stdout`, so `>>` or a group
   redirection such as `{ echo x; imgfx ...; } > f` truncates the file; use
-  `-o FILE`, a plain `>`, or a pipe.
+  `-o FILE`, a plain `>`, or a pipe (`imgfx in.ppm | cat >> all.ppm`).
+  Loup 1.26.0 has no call that writes bytes to an open descriptor in both
+  lanes: `writeBytes` opens the path with truncation, `appendText` cannot
+  carry binary samples in the interpreter (strings are UTF-8 there), and the
+  interpreter cannot call libc's `write` or `putchar`.
 - The interpreted lane is Stage0's `loup-bootstrap run`: the self-hosted
   `loup run` of Loup 1.26.0 on Linux x86-64 silently drops a `writeBytes` of
   26,210 bytes or more, which almost every image is.
@@ -207,7 +233,7 @@ source/filters/point.lphc     # grayscale, invert, brightness, contrast
 source/filters/convolve.lphc  # box blur, Gaussian, Sobel
 source/filters/geometry.lphc  # nearest, bilinear, crop, flip
 source/filters/chain.lphc     # apply the filters in order
-source/commands/imgfx.lphc    # read, filter, write
+source/commands/imgfx.lphc    # read, filter, write; the --profile report
 tests/*_test.lphc             # native unit tests (make test)
 tests/helpers.lphc            # shared test helpers
 tests/fixtures/               # sample images; expected/ holds the golden outputs

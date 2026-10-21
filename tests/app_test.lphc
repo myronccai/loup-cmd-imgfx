@@ -18,6 +18,7 @@ from helpers import (ascii, size_of, byte_at);
 func test_statuses(): void {
     writeBytes("tiny.pgm", ascii("P2 2 2 255 0 50 100 150"));
     expectEq(run(["tiny.pgm", "-o", "out.pgm", "invert", "nearest=4x4"]), EXIT_OK, "filters run");
+    expectEq(run(["--profile", "tiny.pgm", "-o", "out.pgm", "invert"]), EXIT_OK, "--profile");
     expectEq(run(["--version"]), EXIT_OK, "--version");
     expectEq(run(["missing.ppm"]), EXIT_FAILURE, "missing input");
     expectEq(run(["tiny.pgm", "-o", "no/such/dir/out.pgm"]), EXIT_FAILURE, "missing output directory");

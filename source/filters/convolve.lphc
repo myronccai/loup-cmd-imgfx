@@ -10,9 +10,11 @@
 #
 # Structure: blurs are separable: a horizontal pass that keeps unnormalized
 # sums, then a vertical pass, then one rounded division, so the result is
-# exact. Sobel works on the grayscale image with an integer square root.
+# exact. Sobel works on the grayscale image; its magnitude is the integer
+# square root of gx^2 + gy^2, taken with core.math (exact over that range).
 
 from image.image import (Image, to_gray);
+from core.math import (sqrt, floor);
 
 func clamp_index(i: int, n: int): int {
     return if (i < 0) { 0 } else if (i >= n) { n - 1 } else { i };
@@ -72,7 +74,7 @@ func separable(img: Image, weights: list[int], divisor: int): Image {
             }
         }
     }
-    return Image(width = w, height = h, channels = ch, samples = out);
+    return img with (samples = out);
 }
 
 # The mean of the (2R+1) x (2R+1) window.
@@ -84,26 +86,18 @@ pub func box_blur(img: Image, r: int): Image {
     return separable(img, weights, (2 * r + 1) * (2 * r + 1));
 }
 
+# Each pass's weights sum to 4^R, so both passes together divide by
+# 4^(2R).
 pub func gaussian_blur(img: Image, r: int): Image {
-    var divisor = 1;
-    for (k in 0..2 * r) {
-        divisor = divisor * 4;
-    }
-    return separable(img, binomial_row(r), divisor);
+    return separable(img, binomial_row(r), 4 ** (2 * r));
 }
 
-# floor(sqrt(n)) for n >= 0, by Newton's method on integers.
+# floor(sqrt(n)) for 0 <= n < 2^52. Sobel's n is at most 2 * 1020^2: a
+# double holds it exactly and sqrt is correctly rounded, so the result is
+# never pushed across an integer (just below k^2 the true root is about
+# 1/(2k) under k, far more than the rounding error).
 pub func isqrt(n: int): int {
-    if (n < 2) {
-        return n;
-    }
-    var x = n;
-    var y = (x + 1) / 2;
-    while (y < x) {
-        x = y;
-        y = (x + n / x) / 2;
-    }
-    return x;
+    return floor(sqrt(n as float)) as int;
 }
 
 # Gradient magnitude of the 3x3 Sobel operator on the grayscale image.
@@ -133,5 +127,5 @@ pub func sobel(img: Image): Image {
             out.push(if (m > 255) { 255 } else { m });
         }
     }
-    return Image(width = w, height = h, channels = 1, samples = out);
+    return g with (samples = out);
 }

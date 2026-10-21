@@ -1,27 +1,62 @@
 @mode(host.native)
 
-# The imgfx command: read, filter, write. The work is in pure functions
-# (decode_pnm, apply_all, to_gray or to_rgb, encode_pnm); this module only
-# does the I/O.
+# The imgfx command: read, filter, write, and the --profile report. The
+# work is in pure functions (decode_pnm, apply_all, to_gray or to_rgb,
+# encode_pnm); this module does the I/O and times the steps.
 #
 # Runtime: host.native. Compiled into the native binary build/imgfx by
 # `make build` (Stage0 native build); `make run` and `make parity` interpret
 # the same code with Stage0's `loup-bootstrap run`, and tests/e2e.sh checks
-# that both lanes write the same bytes.
+# that both lanes write the same bytes. tests/imgfx_test.lphc checks the
+# spans and the report in native test binaries.
+#
+# Structure: process() runs the pipeline with every step inside a
+# debug.profiler span, render_profile() turns the spans into the report,
+# and run_imgfx() checks the paths, reads, processes, writes and, with
+# --profile, prints the report on standard error.
 
-from appinfo import (EXIT_OK);
+from appinfo import (APP_NAME, EXIT_OK);
 from cli.args import (Options);
 from image.image import (Image, ImageError, to_gray, to_rgb);
 from image.pnm import (decode_pnm, encode_pnm, input_format, output_format);
 from filters.chain import (apply_all);
+from debug.profiler import (Profiler, ProfileSample);
+from core.string_utils import (padLeft, padRight);
 
 # The output bytes for an input file's bytes: decode, filter, convert to
-# the output format, encode.
-pub func process(data: bytes, opts: Options): list[int] {
-    let img = apply_all(decode_pnm(data), opts.filters);
+# the output format, encode. Decoding and encoding are spans of `prof`, as
+# each filter is (apply_all), so --profile can show where the time went.
+pub safe func process(data: bytes, opts: Options, edits prof: Profiler): list[int] {
+    prof.enter("decode");
+    let decoded = decode_pnm(data);
+    prof.exit();
+    let img = apply_all(decoded, opts.filters, edits: prof);
+    prof.enter("encode");
     let format = output_format(img, input_format(data), opts.format);
     let ready = if (format == "2" or format == "5") { to_gray(img) } else { to_rgb(img) };
-    return encode_pnm(ready, format);
+    let out = encode_pnm(ready, format);
+    prof.exit();
+    return out;
+}
+
+# Nanoseconds as milliseconds with three decimals: 1234567 -> "1.234".
+func millis(nanos: int): string {
+    let micros = nanos / 1000;
+    return str(micros / 1000) + "." + padLeft(str(micros % 1000), 3, "0");
+}
+
+## The --profile report: one line per span in the order the steps ran, then
+## their total. Integer arithmetic only, so both lanes print the same text
+## for the same times.
+pub func render_profile(prof: Profiler): string {
+    var lines = [APP_NAME + ": profile (milliseconds)"];
+    var total = 0;
+    for (s in prof.samples()) {
+        lines.push("  " + padRight(s.name, 14, " ") + padLeft(millis(s.totalNanos), 10, " "));
+        total += s.totalNanos;
+    }
+    lines.push("  " + padRight("total", 14, " ") + padLeft(millis(total), 10, " "));
+    return lines.join("\n");
 }
 
 # The directory part of a path ("." for a bare file name).
@@ -53,12 +88,25 @@ pub func run_imgfx(opts: Options): int {
     if (!to_stdout and !exists(directory_of(opts.output))) {
         throw ImageError(i"{$ opts.output $}: cannot write: no such directory");
     }
+    var prof = Profiler();
     var encoded: list[int] = [];
     try {
-        encoded = process(readBytes(in_path), opts);
+        safe {
+            encoded = process(readBytes(in_path), opts, edits: prof);
+        }
     } catch (ImageError as e) {
-        throw ImageError(i"{$ name $}: {$ e.message $}");
+        # Name the input; the decoder's own error stays reachable as the
+        # cause.
+        throw ImageError(i"{$ name $}: {$ e.message $}") from e;
     }
+    # writeBytes opens /dev/stdout anew, with truncation: standard output
+    # appended to a file (`imgfx in.ppm >> all.ppm`) loses what the file
+    # held. No library call writes bytes to the open descriptor in both
+    # lanes (strings must be UTF-8 in the interpreter, and it cannot call
+    # libc), so the README documents it: use -o, or `| cat >> all.ppm`.
     writeBytes(if (to_stdout) { "/dev/stdout" } else { opts.output }, bytesFromInts(encoded));
+    if (opts.profile) {
+        printErr(render_profile(prof));
+    }
     return EXIT_OK;
 }

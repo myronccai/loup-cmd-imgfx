@@ -45,6 +45,20 @@ func test_isqrt(): void {
     expectEq(isqrt(1040400), 1020, "1020 squared");
 }
 
+# isqrt uses floating-point sqrt; check it is the exact integer root for
+# every value Sobel can produce (gx and gy are each at most 4 * 255).
+func test_isqrt_exact_over_sobel_range(): void {
+    let largest = 2 * 1020 * 1020;
+    var wrong = 0;
+    for (n in 0..largest + 1) {
+        let r = isqrt(n);
+        if (r * r > n or (r + 1) * (r + 1) <= n) {
+            wrong += 1;
+        }
+    }
+    expectEq(wrong, 0, "values with a wrong root");
+}
+
 func test_sobel(): void {
     expect_text(describe(sobel(image(3, 3, 1, [7, 7, 7, 7, 7, 7, 7, 7, 7]))), "3x3x1: 0 0 0 0 0 0 0 0 0", "flat");
     # A vertical edge: 0 0 100 in every row. Gx = 4 * 100 at the middle.

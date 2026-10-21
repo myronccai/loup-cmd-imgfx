@@ -42,7 +42,7 @@ mistakes. Load those only as needed.
 │   │   ├── geometry.lphc        # resize_nearest(), resize_bilinear(), crop(), flip()
 │   │   └── chain.lphc           # apply_filter(), apply_all()
 │   └── commands/
-│       └── imgfx.lphc           # process(), run_imgfx(): read, filter, write
+│       └── imgfx.lphc           # process(), render_profile(), run_imgfx(): read, filter, write
 ├── tests/
 │   ├── *_test.lphc              # native unit tests: func test_*(): void
 │   ├── helpers.lphc             # expect_text(), image(), describe(), ascii()

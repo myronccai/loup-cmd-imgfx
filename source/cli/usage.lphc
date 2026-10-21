@@ -8,36 +8,37 @@
 
 from appinfo import (APP_NAME, APP_VERSION, APP_SUMMARY);
 
+# Everything after the first three lines is fixed text, so it is one
+# multiline string. Its lines start at the indentation of the line that
+# opens it (Stage0 requires that), which is stripped, as are the newlines
+# right after the opening quotes and before the closing ones.
 pub func usage(): string {
-    let lines = [
-        i"usage: {$ APP_NAME $} [OPTIONS] INPUT [FILTER...]",
-        "",
-        APP_SUMMARY,
-        "Filters run left to right. INPUT '-' reads standard input.",
-        "",
-        "Filters:",
-        "  grayscale             one channel: (77 R + 150 G + 29 B + 128) >> 8",
-        "  invert                255 - v",
-        "  brightness=N          add N (-255..255)",
-        "  contrast=F            128 + (v - 128) * F (0..10, e.g. 1.5)",
-        "  blur[=R]              mean of the (2R+1)x(2R+1) window (R 1..25, default 1)",
-        "  gaussian[=R]          binomial blur of width 2R+1 (R 1..8, default 1)",
-        "  sobel                 edge magnitude (grayscale)",
-        "  nearest=WxH           resize, nearest neighbour",
-        "  bilinear=WxH          resize, bilinear",
-        "  crop=X,Y,W,H          cut out a rectangle",
-        "  flip=h, flip=v        mirror left-right or top-bottom",
-        "",
-        "Options:",
-        "  -o, --output FILE     write FILE instead of standard output",
-        "  -f, --format FMT      output format P2, P3, P5 or P6 (default: the",
-        "                        input's plain/binary encoding, gray or color)",
-        "  -h, --help            show this help and exit",
-        "  -V, --version         show the version and exit",
-        "",
-        "Exit status: 0 success, 1 bad input or output, 2 usage error.",
-    ];
-    return lines.join("\n");
+    let fixed = """
+    Filters:
+      grayscale             one channel: (77 R + 150 G + 29 B + 128) >> 8
+      invert                255 - v
+      brightness=N          add N (-255..255)
+      contrast=F            128 + (v - 128) * F (0..10, e.g. 1.5)
+      blur[=R]              mean of the (2R+1)x(2R+1) window (R 1..25, default 1)
+      gaussian[=R]          binomial blur of width 2R+1 (R 1..8, default 1)
+      sobel                 edge magnitude (grayscale)
+      nearest=WxH           resize, nearest neighbour
+      bilinear=WxH          resize, bilinear
+      crop=X,Y,W,H          cut out a rectangle
+      flip=h, flip=v        mirror left-right or top-bottom
+
+    Options:
+      -o, --output FILE     write FILE instead of standard output
+      -f, --format FMT      output format P2, P3, P5 or P6 (default: the
+                            input's plain/binary encoding, gray or color)
+          --profile         report the time of each step on standard error
+      -h, --help            show this help and exit
+      -V, --version         show the version and exit
+
+    Exit status: 0 success, 1 bad input or output, 2 usage error.
+    """;
+    return i"usage: {$ APP_NAME $} [OPTIONS] INPUT [FILTER...]" + "\n\n" + APP_SUMMARY + "\n"
+        + "Filters run left to right. INPUT '-' reads standard input.\n\n" + fixed;
 }
 
 pub func version_line(): string {

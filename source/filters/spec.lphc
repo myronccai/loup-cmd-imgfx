@@ -21,12 +21,14 @@ pub struct Filter {
 
 pub const KINDS: string = "grayscale, invert, brightness=N, contrast=F, blur[=R], gaussian[=R], sobel, nearest=WxH, bilinear=WxH, crop=X,Y,W,H, flip=h|v";
 
-func filter(kind: string, a: int, b: int, c: int, d: int): Filter {
+# Arguments a kind does not use default to 0, so each call names only the
+# fields it sets: filter(name, a = w, b = h).
+func filter(kind: string, a: int = 0, b: int = 0, c: int = 0, d: int = 0): Filter {
     return Filter(kind = kind, a = a, b = b, c = c, d = d);
 }
 
 # A decimal integer with an optional sign, or None.
-pub func parse_int(text: string): Option[int] {
+pub func parse_int(text: string): int? {
     var digits = text;
     var sign = 1;
     if (text.startsWith("-") or text.startsWith("+")) {
@@ -49,7 +51,7 @@ pub func parse_int(text: string): Option[int] {
 
 # A non-negative decimal with up to three fractional digits, in thousandths:
 # "1.5" -> 1500, ".25" -> 250, "2" -> 2000.
-pub func parse_decimal_milli(text: string): Option[int] {
+pub func parse_decimal_milli(text: string): int? {
     let parts = text.split(".");
     if (parts.len() > 2 or text.len() == 0 or text == ".") {
         return None;
@@ -59,7 +61,7 @@ pub func parse_decimal_milli(text: string): Option[int] {
     if (frac_text.len() > 3 or whole_text.startsWith("-") or whole_text.startsWith("+")) {
         return None;
     }
-    let whole = if (whole_text.len() == 0) { 0 } else { parse_int(whole_text).unwrap_or(-1) };
+    let whole = if (whole_text.len() == 0) { 0 } else { parse_int(whole_text) ?? -1 };
     if (whole < 0) {
         return None;
     }
@@ -77,13 +79,13 @@ pub func parse_decimal_milli(text: string): Option[int] {
 }
 
 # "WxH" -> (W, H), each 1..16384.
-pub func parse_size(text: string): Option[(int, int)] {
+pub func parse_size(text: string): (int, int)? {
     let parts = text.split("x");
     if (parts.len() != 2) {
         return None;
     }
-    let w = parse_int(parts[0]).unwrap_or(0);
-    let h = parse_int(parts[1]).unwrap_or(0);
+    let w = parse_int(parts[0]) ?? 0;
+    let h = parse_int(parts[1]) ?? 0;
     if (w < 1 or h < 1 or w > 16384 or h > 16384 or parts[0].startsWith("+") or parts[1].startsWith("+")) {
         return None;
     }
@@ -92,13 +94,13 @@ pub func parse_size(text: string): Option[(int, int)] {
 
 func radius(name: string, value: string, has_value: bool, max: int): Result[Filter, string] {
     if (!has_value) {
-        return Ok(filter(name, 1, 0, 0, 0));
+        return Ok(filter(name, a = 1));
     }
-    let r = parse_int(value).unwrap_or(0);
+    let r = parse_int(value) ?? 0;
     if (r < 1 or r > max) {
         return Err(i"'{$ name $}' needs a radius from 1 to {$ max $}, not '{$ value $}'");
     }
-    return Ok(filter(name, r, 0, 0, 0));
+    return Ok(filter(name, a = r));
 }
 
 # Parses one filter specification.
@@ -115,7 +117,7 @@ pub func parse_filter(spec: string): Result[Filter, string] {
         if (has_value) {
             return Err(i"'{$ name $}' takes no argument");
         }
-        return Ok(filter(name, 0, 0, 0, 0));
+        return Ok(filter(name));
     }
     if (name == "blur") {
         return radius(name, value, has_value, 25);
@@ -131,43 +133,43 @@ pub func parse_filter(spec: string): Result[Filter, string] {
         return Err(i"unknown filter '{$ name $}'");
     }
     if (name == "brightness") {
-        let n = parse_int(value).unwrap_or(1000);
+        let n = parse_int(value) ?? 1000;
         if (n < -255 or n > 255) {
             return Err(i"'brightness' needs a number from -255 to 255, not '{$ value $}'");
         }
-        return Ok(filter(name, n, 0, 0, 0));
+        return Ok(filter(name, a = n));
     }
     if (name == "contrast") {
-        let f = parse_decimal_milli(value).unwrap_or(-1);
+        let f = parse_decimal_milli(value) ?? -1;
         if (f < 0 or f > 10000) {
             return Err(i"'contrast' needs a factor from 0 to 10 (up to 3 decimals), not '{$ value $}'");
         }
-        return Ok(filter(name, f, 0, 0, 0));
+        return Ok(filter(name, a = f));
     }
     if (name == "nearest" or name == "bilinear") {
         return match parse_size(value) {
-            Some((w, h)) => Ok(filter(name, w, h, 0, 0)),
+            Some((w, h)) => Ok(filter(name, a = w, b = h)),
             None => Err(i"'{$ name $}' needs a size WxH (1 to 16384 each), not '{$ value $}'"),
         };
     }
     if (name == "crop") {
         let parts = value.split(",");
         if (parts.len() == 4) {
-            let x = parse_int(parts[0]).unwrap_or(-1);
-            let y = parse_int(parts[1]).unwrap_or(-1);
-            let w = parse_int(parts[2]).unwrap_or(0);
-            let h = parse_int(parts[3]).unwrap_or(0);
+            let x = parse_int(parts[0]) ?? -1;
+            let y = parse_int(parts[1]) ?? -1;
+            let w = parse_int(parts[2]) ?? 0;
+            let h = parse_int(parts[3]) ?? 0;
             if (x >= 0 and y >= 0 and w >= 1 and h >= 1) {
-                return Ok(filter(name, x, y, w, h));
+                return Ok(filter(name, a = x, b = y, c = w, d = h));
             }
         }
         return Err(i"'crop' needs X,Y,W,H (X, Y from 0; W, H from 1), not '{$ value $}'");
     }
     if (name == "flip") {
         if (value == "h") {
-            return Ok(filter(name, 0, 0, 0, 0));
+            return Ok(filter(name, a = 0));
         } else if (value == "v") {
-            return Ok(filter(name, 1, 0, 0, 0));
+            return Ok(filter(name, a = 1));
         }
         return Err(i"'flip' needs h or v, not '{$ value $}'");
     }

@@ -13,11 +13,13 @@
 # raster starts after exactly one whitespace byte; a plain one is decimal
 # numbers separated like the header.
 #
-# Structure: a byte cursor and the header readers, decode_pnm() (header,
-# raster, then every sample checked and scaled to 0..255), the output format
-# choice, and encode_pnm(), which always writes maximum value 255.
+# Structure: the header readers over an io.streams ByteReader, decode_pnm()
+# (header, raster, then every sample checked and scaled to 0..255), the
+# output format choice, and encode_pnm(), which always writes maximum value
+# 255.
 
 from image.image import (Image, ImageError);
+from io.streams import (ByteReader);
 
 pub const MAX_SIDE: int = 16384;
 
@@ -25,22 +27,21 @@ func is_space(b: int): bool {
     return b == 32 or (b >= 9 and b <= 13);
 }
 
-# A cursor over the input bytes. Struct methods cannot mutate, so the
-# reader functions take `edits`.
-struct Cursor {
-    var pos: int;
-}
-
-func skip_space_and_comments(data: bytes, edits cur: Cursor): void {
-    let n = data.len();
-    while (cur.pos < n) {
-        let b = data[cur.pos];
+# The header readers share one ByteReader: it keeps the position, so each
+# call continues where the previous one stopped. Reading advances it, so
+# they take it `edits` and are `safe func`s (a modifier method on a shared
+# class instance needs a safe context). Each checks atEnd() before peeking:
+# a ByteReader throws EndOfStreamError past the end, and the messages here
+# name what was being read instead.
+safe func skip_space_and_comments(edits reader: ByteReader): void {
+    while (!reader.atEnd()) {
+        let b = reader.peekByte();
         if (is_space(b)) {
-            cur.pos = cur.pos + 1;
+            let _space = reader.readByte();
         } else if (b == 35) {
             # `#` comment: skip to the end of the line.
-            while (cur.pos < n and data[cur.pos] != 10 and data[cur.pos] != 13) {
-                cur.pos = cur.pos + 1;
+            while (!reader.atEnd() and reader.peekByte() != 10 and reader.peekByte() != 13) {
+                let _skipped = reader.readByte();
             }
         } else {
             return;
@@ -49,21 +50,19 @@ func skip_space_and_comments(data: bytes, edits cur: Cursor): void {
 }
 
 # Reads an unsigned decimal number, or throws ImageError naming `what`.
-func read_number(data: bytes, edits cur: Cursor, what: string): int {
-    skip_space_and_comments(data, edits: cur);
-    let n = data.len();
-    if (cur.pos >= n) {
+safe func read_number(edits reader: ByteReader, what: string): int {
+    skip_space_and_comments(edits: reader);
+    if (reader.atEnd()) {
         throw ImageError(i"unexpected end of file reading the {$ what $}");
     }
     var value = 0;
     var digits = 0;
-    while (cur.pos < n and data[cur.pos] >= 48 and data[cur.pos] <= 57) {
+    while (!reader.atEnd() and reader.peekByte() >= 48 and reader.peekByte() <= 57) {
         if (digits >= 9) {
             throw ImageError(i"the {$ what $} is too large");
         }
-        value = value * 10 + (data[cur.pos] - 48);
+        value = value * 10 + (reader.readByte() - 48);
         digits += 1;
-        cur.pos = cur.pos + 1;
     }
     if (digits == 0) {
         throw ImageError(i"expected a number for the {$ what $}");
@@ -72,7 +71,7 @@ func read_number(data: bytes, edits cur: Cursor, what: string): int {
 }
 
 # Decodes a PGM or PPM image; throws ImageError if it is not one.
-pub func decode_pnm(data: bytes): Image {
+pub safe func decode_pnm(data: bytes): Image {
     if (data.len() < 2 or data[0] != 80) {
         throw ImageError("not a PGM or PPM image (bad magic number)");
     }
@@ -81,10 +80,11 @@ pub func decode_pnm(data: bytes): Image {
         throw ImageError(i"unsupported format P{$ str(char.of(data[1])) $} (only P2, P3, P5 and P6)");
     }
     let channels = if (kind == 3 or kind == 6) { 3 } else { 1 };
-    var cur = Cursor(pos = 2);
-    let width = read_number(data, edits: cur, "width");
-    let height = read_number(data, edits: cur, "height");
-    let maxval = read_number(data, edits: cur, "maximum value");
+    var reader = ByteReader(data);
+    reader.seek(2);
+    let width = read_number(edits: reader, "width");
+    let height = read_number(edits: reader, "height");
+    let maxval = read_number(edits: reader, "maximum value");
     if (width < 1 or height < 1 or width > MAX_SIDE or height > MAX_SIDE) {
         throw ImageError(i"unsupported size {$ width $}x{$ height $} (1 to {$ MAX_SIDE $} per side)");
     }
@@ -97,11 +97,12 @@ pub func decode_pnm(data: bytes): Image {
     let count = width * height * channels;
     var samples: list[int] = [];
     if (kind == 5 or kind == 6) {
-        # Exactly one whitespace byte separates the header from the raster.
-        if (cur.pos >= data.len() or !is_space(data[cur.pos])) {
+        # Exactly one whitespace byte separates the header from the raster,
+        # which is then read straight from `data` (a byte per sample).
+        if (reader.atEnd() or !is_space(reader.peekByte())) {
             throw ImageError("expected whitespace after the maximum value");
         }
-        let start = cur.pos + 1;
+        let start = reader.position() + 1;
         let available = data.len() - start;
         if (available < count) {
             throw ImageError(i"truncated raster: expected {$ count $} bytes, found {$ available $}");
@@ -111,7 +112,7 @@ pub func decode_pnm(data: bytes): Image {
         }
     } else {
         for (i in 0..count) {
-            samples.push(read_number(data, edits: cur, "sample"));
+            samples.push(read_number(edits: reader, "sample"));
         }
     }
     # Check every sample against the maximum value and scale it to 0..255,
@@ -167,8 +168,9 @@ pub func encode_pnm(img: Image, format: string): list[int] {
         }
         return out;
     }
-    # Plain text: one image row starts each line, and lines wrap before 70
-    # characters.
+    # Plain text: one image row starts each line, and a line wraps rather
+    # than grow past the Netpbm limit for plain files.
+    const MAX_LINE: int = 70;
     let per_row = img.width * img.channels;
     var i = 0;
     for (y in 0..img.height) {
@@ -176,7 +178,7 @@ pub func encode_pnm(img: Image, format: string): list[int] {
         for (k in 0..per_row) {
             let text = str(img.samples[i]);
             i += 1;
-            if (column > 0 and column + 1 + text.len() > 70) {
+            if (column > 0 and column + 1 + text.len() > MAX_LINE) {
                 out.push(10);
                 column = 0;
             }

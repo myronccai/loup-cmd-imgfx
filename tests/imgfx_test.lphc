@@ -1,0 +1,52 @@
+@mode(host.native)
+
+# Unit tests for the imgfx command module (commands/imgfx.lphc): the steps
+# process() times as profiler spans, and the --profile report.
+#
+# Runtime: host.native, run by the test runner: `make test` runs
+# `loup-bootstrap test --native`, which compiles each `func test_*()` here,
+# with the modules it imports from source/ and tests/ (both on LOUPPATH),
+# into its own native binary and runs it. Not part of build/imgfx, and not
+# run by the interpreter lane (`make parity` runs tests/e2e.sh).
+
+from debug.assert import (expect, expectEq);
+from debug.profiler import (Profiler);
+from cli.args import (parse_args);
+from commands.imgfx import (process, render_profile);
+from helpers import (expect_text, ascii, text_of);
+
+# A manual profiler's clock moves only by advanceClock, so these tests get
+# exact times; process() itself never advances it.
+func test_process_spans(): void {
+    let opts = parse_args(["in.pgm", "invert", "flip=h"]).unwrap();
+    var prof = Profiler.manual();
+    var out: list[int] = [];
+    safe {
+        out = process(ascii("P2 2 1 255 10 20"), opts, edits: prof);
+    }
+    expect_text(text_of(out), "P2\n2 1\n255\n235 245\n", "inverted, then mirrored");
+    var names: list[string] = [];
+    for (s in prof.samples()) {
+        names.push(s.name);
+    }
+    expect_text(names.join(","), "decode,1 invert,2 flip,encode", "one span per step, in order");
+}
+
+func test_render_profile(): void {
+    var prof = Profiler.manual();
+    safe {
+        prof.enter("decode");
+        prof.advanceClock(1_234_567);
+        prof.exit();
+        prof.enter("1 gaussian");
+        prof.advanceClock(20_000_000);
+        prof.exit();
+    }
+    let want = [
+        "imgfx: profile (milliseconds)",
+        "  decode             1.234",
+        "  1 gaussian        20.000",
+        "  total             21.234",
+    ];
+    expect_text(render_profile(prof), want.join("\n"), "report");
+}

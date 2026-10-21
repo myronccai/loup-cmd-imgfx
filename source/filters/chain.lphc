@@ -1,7 +1,8 @@
 @mode(host.native)
 
 # Applies parsed imgfx filters to an image, left to right: the dispatch from
-# a Filter's kind to the function that implements it.
+# a Filter's kind to the function that implements it, each filter timed as
+# a profiler span.
 #
 # Runtime: host.native. Compiled into the native binary build/imgfx by
 # `make build` (Stage0 native build); `make run` and `make parity` interpret
@@ -12,6 +13,7 @@ from filters.spec import (Filter);
 from filters.point import (grayscale, invert, brightness, contrast);
 from filters.convolve import (box_blur, gaussian_blur, sobel);
 from filters.geometry import (resize_nearest, resize_bilinear, crop, flip);
+from debug.profiler import (Profiler);
 
 pub func apply_filter(img: Image, f: Filter): Image {
     let k = f.kind;
@@ -40,10 +42,15 @@ pub func apply_filter(img: Image, f: Filter): Image {
     return flip(img, f.a == 1);
 }
 
-pub func apply_all(img: Image, filters: list[Filter]): Image {
+# Each filter runs inside a profiler span named after its position and kind
+# ("2 gaussian"), so the same filter twice in a chain is timed twice.
+pub safe func apply_all(img: Image, filters: list[Filter], edits prof: Profiler): Image {
     var current = img;
-    for (f in filters) {
+    for (k in 0..filters.len()) {
+        let f = filters[k];
+        prof.enter(str(k + 1) + " " + f.kind);
         current = apply_filter(current, f);
+        prof.exit();
     }
     return current;
 }

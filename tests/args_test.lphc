@@ -18,6 +18,9 @@ func test_input_and_filters(): void {
     expectEq(opts.filters.len(), 2, "two filters");
     expect_text(opts.filters[1].kind, "invert", "order kept");
     expect_text(opts.output, "", "standard output");
+    expect(!opts.profile, "no profile by default");
+    expect(parse_args(["--profile", "in.ppm"]).unwrap().profile, "--profile");
+    expect(parse_args(["--profile=1", "in.ppm"]).is_err(), "--profile takes no value");
 }
 
 func test_options(): void {
